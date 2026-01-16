@@ -13,6 +13,7 @@ const (
 	envWebsites          = "WEBSITES"
 	envLogDestination    = "LOG_DEST"
 	envTaskInterval      = "TASK_INTERVAL"
+	envLogRetentionDays  = "LOG_RETENTION_DAYS"
 	envServerPort        = "SERVER_PORT"
 	envPVStatusCodes     = "PV_STATUS_CODES"
 	envPVExcludePatterns = "PV_EXCLUDE_PATTERNS"
@@ -36,9 +37,10 @@ var (
 		"atom.xml$",
 	}
 	defaultSystem = SystemConfig{
-		LogDestination: "file",
-		TaskInterval:   "1m",
-		DemoMode:       false,
+		LogDestination:   "file",
+		TaskInterval:     "1m",
+		LogRetentionDays: 30,
+		DemoMode:         false,
 	}
 	defaultServer = ServerConfig{
 		Port: ":8089",
@@ -113,6 +115,17 @@ func applyEnvOverrides(cfg *Config) error {
 		cfg.System.TaskInterval = raw
 	}
 
+	if raw, key := getEnvValue(envLogRetentionDays); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("解析 %s 失败: %w", key, err)
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("%s 必须大于0", key)
+		}
+		cfg.System.LogRetentionDays = parsed
+	}
+
 	if raw, key := getEnvValue(envDemoMode); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
@@ -161,6 +174,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.System.TaskInterval == "" {
 		cfg.System.TaskInterval = defaultSystem.TaskInterval
+	}
+	if cfg.System.LogRetentionDays <= 0 {
+		cfg.System.LogRetentionDays = defaultSystem.LogRetentionDays
 	}
 	if cfg.Server.Port == "" {
 		cfg.Server.Port = defaultServer.Port

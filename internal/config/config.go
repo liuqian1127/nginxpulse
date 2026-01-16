@@ -33,9 +33,10 @@ type WebsiteConfig struct {
 }
 
 type SystemConfig struct {
-	LogDestination string `json:"logDestination"`
-	TaskInterval   string `json:"taskInterval"` // "5m" "25s"
-	DemoMode       bool   `json:"demoMode"`
+	LogDestination   string `json:"logDestination"`
+	TaskInterval     string `json:"taskInterval"` // "5m" "25s"
+	LogRetentionDays int    `json:"logRetentionDays"`
+	DemoMode         bool   `json:"demoMode"`
 }
 
 type ServerConfig struct {

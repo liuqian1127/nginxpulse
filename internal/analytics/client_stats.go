@@ -82,39 +82,40 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 	statsType := s.statsType
 	locationType := ""
+	joinClause := ""
 	if s.statsType == "location" {
 		locationType = query.ExtraParam["locationType"].(string)
 		switch locationType {
 		case "domestic", "city":
-			statsType = "domestic_location"
+			statsType = "domestic"
 		case "global":
-			statsType = "global_location"
+			statsType = "global"
 		default:
-			statsType = locationType + "_location"
+			statsType = locationType
 		}
 	}
 	selectExpr := statsType
 	groupExpr := statsType
 	if s.statsType == "location" && locationType == "domestic" {
-		selectExpr = fmt.Sprintf("CASE WHEN instr(%[1]s, '·') > 0 THEN substr(%[1]s, 1, instr(%[1]s, '·') - 1) ELSE %[1]s END", statsType)
+		selectExpr = fmt.Sprintf("CASE WHEN instr(loc.%[1]s, '·') > 0 THEN substr(loc.%[1]s, 1, instr(loc.%[1]s, '·') - 1) ELSE loc.%[1]s END", statsType)
 		groupExpr = selectExpr
 	}
 	if s.statsType == "location" && locationType == "city" {
-		selectExpr = fmt.Sprintf("CASE WHEN instr(%[1]s, '·') > 0 THEN substr(%[1]s, instr(%[1]s, '·') + 1) ELSE %[1]s END", statsType)
+		selectExpr = fmt.Sprintf("CASE WHEN instr(loc.%[1]s, '·') > 0 THEN substr(loc.%[1]s, instr(loc.%[1]s, '·') + 1) ELSE loc.%[1]s END", statsType)
 		groupExpr = selectExpr
 	}
 	if s.statsType == "referer" {
 		internalCond := ""
 		if website, ok := config.GetWebsiteByID(query.WebsiteID); ok {
-			internalCond = buildInternalRefererCondition(website.Domains)
+			internalCond = buildInternalRefererCondition(website.Domains, "r.referer")
 		}
 		if internalCond != "" {
 			selectExpr = fmt.Sprintf(
-				"CASE WHEN referer = '-' OR referer = '' THEN '直接输入网址访问' WHEN %s THEN '站内访问' ELSE referer END",
+				"CASE WHEN r.referer = '-' OR r.referer = '' THEN '直接输入网址访问' WHEN %s THEN '站内访问' ELSE r.referer END",
 				internalCond,
 			)
 		} else {
-			selectExpr = "CASE WHEN referer = '-' OR referer = '' THEN '直接输入网址访问' ELSE referer END"
+			selectExpr = "CASE WHEN r.referer = '-' OR r.referer = '' THEN '直接输入网址访问' ELSE r.referer END"
 		}
 		groupExpr = selectExpr
 	}
@@ -126,8 +127,37 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	}
 
 	extraCondition := ""
+	switch s.statsType {
+	case "url":
+		joinClause = fmt.Sprintf(`JOIN "%s_dim_url" u ON u.id = l.url_id`, query.WebsiteID)
+		selectExpr = "u.url"
+		groupExpr = "u.url"
+	case "referer":
+		joinClause = fmt.Sprintf(`JOIN "%s_dim_referer" r ON r.id = l.referer_id`, query.WebsiteID)
+	case "user_browser":
+		joinClause = fmt.Sprintf(`JOIN "%s_dim_ua" ua ON ua.id = l.ua_id`, query.WebsiteID)
+		selectExpr = "ua.browser"
+		groupExpr = "ua.browser"
+	case "user_os":
+		joinClause = fmt.Sprintf(`JOIN "%s_dim_ua" ua ON ua.id = l.ua_id`, query.WebsiteID)
+		selectExpr = "ua.os"
+		groupExpr = "ua.os"
+	case "user_device":
+		joinClause = fmt.Sprintf(`JOIN "%s_dim_ua" ua ON ua.id = l.ua_id`, query.WebsiteID)
+		selectExpr = "ua.device"
+		groupExpr = "ua.device"
+	case "location":
+		joinClause = fmt.Sprintf(`JOIN "%s_dim_location" loc ON loc.id = l.location_id`, query.WebsiteID)
+		if locationType == "global" {
+			selectExpr = "loc.global"
+			groupExpr = "loc.global"
+		} else if locationType != "domestic" && locationType != "city" {
+			selectExpr = "loc." + statsType
+			groupExpr = selectExpr
+		}
+	}
 	if s.statsType == "location" && (locationType == "domestic" || locationType == "city") {
-		extraCondition = " AND global_location = '中国'"
+		extraCondition = " AND loc.global = '中国'"
 	}
 
 	// 构建、执行查询
@@ -135,13 +165,14 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
         SELECT 
             %[1]s AS url, 
             COUNT(*) AS pv,
-            COUNT(DISTINCT ip) AS uv
-        FROM "%[2]s_nginx_logs" INDEXED BY idx_%[2]s_pv_ts_ip
-        WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?%[4]s
+            COUNT(DISTINCT l.ip_id) AS uv
+        FROM "%[2]s_nginx_logs" l INDEXED BY idx_%[2]s_pv_ts_ip
+        %[4]s
+        WHERE l.pageview_flag = 1 AND l.timestamp >= ? AND l.timestamp < ?%[5]s
         GROUP BY %[3]s
         ORDER BY uv DESC
         LIMIT ?`,
-		selectExpr, query.WebsiteID, groupExpr, extraCondition)
+		selectExpr, query.WebsiteID, groupExpr, joinClause, extraCondition)
 
 	rows, err := s.repo.GetDB().Query(dbQueryStr, startTime.Unix(), endTime.Unix(), limit)
 	if err != nil {
@@ -184,7 +215,7 @@ func (s *ClientStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 }
 
-func buildInternalRefererCondition(domains []string) string {
+func buildInternalRefererCondition(domains []string, refererColumn string) string {
 	conditions := make([]string, 0, len(domains))
 	for _, raw := range domains {
 		domain := normalizeDomain(raw)
@@ -194,8 +225,8 @@ func buildInternalRefererCondition(domains []string) string {
 		domain = strings.ReplaceAll(domain, "'", "''")
 		conditions = append(conditions,
 			fmt.Sprintf(
-				"referer LIKE 'http%%://%s/%%' OR referer LIKE 'http%%://%s' OR referer LIKE 'http%%://%s:%%'",
-				domain, domain, domain,
+				"%[1]s LIKE 'http%%://%[2]s/%%' OR %[1]s LIKE 'http%%://%[2]s' OR %[1]s LIKE 'http%%://%[2]s:%%'",
+				refererColumn, domain,
 			),
 		)
 	}

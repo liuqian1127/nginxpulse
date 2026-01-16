@@ -44,10 +44,10 @@ func (m *SessionSummaryStatsManager) Query(query StatsQuery) (StatsResult, error
 	tableName := fmt.Sprintf("%s_nginx_logs", query.WebsiteID)
 	rows, err := m.repo.GetDB().Query(
 		fmt.Sprintf(`
-        SELECT timestamp, ip, user_browser, user_os, user_device
+        SELECT timestamp, ip_id, ua_id
         FROM "%s" INDEXED BY idx_%s_session_key
         WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?
-        ORDER BY ip, user_browser, user_os, user_device, timestamp`,
+        ORDER BY ip_id, ua_id, timestamp`,
 			tableName, query.WebsiteID),
 		startTime.Unix(), endTime.Unix(),
 	)
@@ -69,16 +69,14 @@ func (m *SessionSummaryStatsManager) Query(query StatsQuery) (StatsResult, error
 	for rows.Next() {
 		var (
 			timestamp int64
-			ip        string
-			browser   string
-			os        string
-			device    string
+			ipID      int64
+			uaID      int64
 		)
-		if err := rows.Scan(&timestamp, &ip, &browser, &os, &device); err != nil {
+		if err := rows.Scan(&timestamp, &ipID, &uaID); err != nil {
 			return result, fmt.Errorf("解析会话摘要失败: %v", err)
 		}
 
-		key := fmt.Sprintf("%s|%s|%s|%s", ip, browser, os, device)
+		key := fmt.Sprintf("%d|%d", ipID, uaID)
 		if !initialized || key != currentKey || timestamp-lastTimestamp > sessionGapSeconds {
 			if initialized {
 				finalizeSessionSummary(&result, startTimestamp, endTimestamp, pageCount, &totalDuration)

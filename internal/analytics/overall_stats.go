@@ -1,6 +1,7 @@
 package analytics
 
 import (
+	"database/sql"
 	"fmt"
 	"math"
 	"sort"
@@ -181,24 +182,38 @@ func (s *OverallStatsManager) statsByTimeRangeForWebsite(
 	overall.UV = 0
 	overall.Traffic = 0
 
-	tableName := fmt.Sprintf("%s_nginx_logs", websiteID)
+	startDay := dayBucket(startTime)
+	endDay := dayBucket(endTime)
 
-	// 为更精确的统计，直接在数据库中进行全范围的唯一IP计数
-	countQuery := fmt.Sprintf(`
+	aggQuery := fmt.Sprintf(`
         SELECT 
-            COUNT(*) as pv,
-            COUNT(DISTINCT ip) as uv,
-            COALESCE(SUM(bytes_sent), 0) as traffic
-        FROM "%s" INDEXED BY idx_%s_pv_ts_ip
-        WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?`,
-		tableName, websiteID)
+            COALESCE(SUM(pv), 0) as pv,
+            COALESCE(SUM(traffic), 0) as traffic
+        FROM "%s_agg_daily"
+        WHERE day >= ? AND day <= ?`,
+		websiteID)
 
-	// 执行全范围查询
-	row := s.repo.GetDB().QueryRow(countQuery, startTime.Unix(), endTime.Unix())
-
-	if err := row.Scan(&overall.PV, &overall.UV, &overall.Traffic); err != nil {
+	var pv int64
+	var traffic int64
+	row := s.repo.GetDB().QueryRow(aggQuery, startDay, endDay)
+	if err := row.Scan(&pv, &traffic); err != nil {
 		return fmt.Errorf("查询总体统计数据失败: %v", err)
 	}
+	overall.PV = int(pv)
+	overall.Traffic = traffic
+
+	uvQuery := fmt.Sprintf(`
+        SELECT COUNT(DISTINCT ip_id) as uv
+        FROM "%s_agg_daily_ip"
+        WHERE day >= ? AND day <= ?`,
+		websiteID)
+
+	var uv int64
+	row = s.repo.GetDB().QueryRow(uvQuery, startDay, endDay)
+	if err := row.Scan(&uv); err != nil {
+		return fmt.Errorf("查询总体统计UV失败: %v", err)
+	}
+	overall.UV = int(uv)
 
 	return nil
 }
@@ -207,20 +222,21 @@ func (s *OverallStatsManager) statusCodeHitsByTimeRangeForWebsite(
 	websiteID string, startTime, endTime time.Time) (StatusCodeHits, error) {
 
 	result := StatusCodeHits{}
-	tableName := fmt.Sprintf("%s_nginx_logs", websiteID)
+	startDay := dayBucket(startTime)
+	endDay := dayBucket(endTime)
 
 	query := fmt.Sprintf(`
         SELECT
-            COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END), 0) AS s2xx,
-            COALESCE(SUM(CASE WHEN status_code >= 300 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS s3xx,
-            COALESCE(SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END), 0) AS s4xx,
-            COALESCE(SUM(CASE WHEN status_code >= 500 AND status_code < 600 THEN 1 ELSE 0 END), 0) AS s5xx,
-            COALESCE(SUM(CASE WHEN status_code < 200 OR status_code >= 600 THEN 1 ELSE 0 END), 0) AS other
-        FROM "%s" INDEXED BY idx_%s_timestamp
-        WHERE timestamp >= ? AND timestamp < ?`,
-		tableName, websiteID)
+            COALESCE(SUM(s2xx), 0) AS s2xx,
+            COALESCE(SUM(s3xx), 0) AS s3xx,
+            COALESCE(SUM(s4xx), 0) AS s4xx,
+            COALESCE(SUM(s5xx), 0) AS s5xx,
+            COALESCE(SUM(other), 0) AS other
+        FROM "%s_agg_daily"
+        WHERE day >= ? AND day <= ?`,
+		websiteID)
 
-	row := s.repo.GetDB().QueryRow(query, startTime.Unix(), endTime.Unix())
+	row := s.repo.GetDB().QueryRow(query, startDay, endDay)
 	if err := row.Scan(&result.S2xx, &result.S3xx, &result.S4xx, &result.S5xx, &result.Other); err != nil {
 		return result, fmt.Errorf("查询状态码统计失败: %v", err)
 	}
@@ -240,16 +256,151 @@ func collectSessionMetrics(
 	websiteID string,
 	startTime, endTime time.Time,
 ) (sessionMetrics, error) {
+	sessionAggTable := fmt.Sprintf("%s_agg_session_daily", websiteID)
+	entryAggTable := fmt.Sprintf("%s_agg_entry_daily", websiteID)
+	hasSessionAgg, err := tableExists(repo.GetDB(), sessionAggTable)
+	if err != nil {
+		return sessionMetrics{EntryCounts: make(map[string]int)}, err
+	}
+	hasEntryAgg, err := tableExists(repo.GetDB(), entryAggTable)
+	if err != nil {
+		return sessionMetrics{EntryCounts: make(map[string]int)}, err
+	}
+	if hasSessionAgg && hasEntryAgg {
+		return collectSessionMetricsFromAggregates(repo.GetDB(), websiteID, startTime, endTime)
+	}
+
+	sessionTable := fmt.Sprintf("%s_sessions", websiteID)
+	exists, err := tableExists(repo.GetDB(), sessionTable)
+	if err != nil {
+		return sessionMetrics{EntryCounts: make(map[string]int)}, err
+	}
+	if !exists {
+		return collectSessionMetricsFromLogs(repo, websiteID, startTime, endTime)
+	}
+	return collectSessionMetricsFromSessions(repo.GetDB(), websiteID, startTime, endTime)
+}
+
+func collectSessionMetricsFromAggregates(
+	db *sql.DB,
+	websiteID string,
+	startTime, endTime time.Time,
+) (sessionMetrics, error) {
+	metrics := sessionMetrics{
+		EntryCounts: make(map[string]int),
+	}
+
+	startDay := dayBucket(startTime)
+	endDay := dayBucket(endTime)
+
+	sessionTable := fmt.Sprintf("%s_agg_session_daily", websiteID)
+	entryTable := fmt.Sprintf("%s_agg_entry_daily", websiteID)
+	urlTable := fmt.Sprintf("%s_dim_url", websiteID)
+
+	row := db.QueryRow(fmt.Sprintf(
+		`SELECT COALESCE(SUM(sessions), 0) FROM "%s" WHERE day >= ? AND day <= ?`, sessionTable,
+	), startDay, endDay)
+	if err := row.Scan(&metrics.SessionCount); err != nil {
+		return metrics, err
+	}
+
+	rows, err := db.Query(fmt.Sprintf(
+		`SELECT u.url, SUM(e.count)
+         FROM "%s" e
+         JOIN "%s" u ON u.id = e.entry_url_id
+         WHERE e.day >= ? AND e.day <= ?
+         GROUP BY e.entry_url_id`,
+		entryTable, urlTable,
+	), startDay, endDay)
+	if err != nil {
+		return metrics, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			url   string
+			count int
+		)
+		if err := rows.Scan(&url, &count); err != nil {
+			return metrics, err
+		}
+		metrics.EntryCounts[url] = count
+	}
+
+	if err := rows.Err(); err != nil {
+		return metrics, err
+	}
+
+	return metrics, nil
+}
+
+func collectSessionMetricsFromSessions(
+	db *sql.DB,
+	websiteID string,
+	startTime, endTime time.Time,
+) (sessionMetrics, error) {
+	metrics := sessionMetrics{
+		EntryCounts: make(map[string]int),
+	}
+
+	sessionTable := fmt.Sprintf("%s_sessions", websiteID)
+	urlTable := fmt.Sprintf("%s_dim_url", websiteID)
+
+	row := db.QueryRow(fmt.Sprintf(
+		`SELECT COUNT(*) FROM "%s" WHERE start_ts >= ? AND start_ts < ?`, sessionTable,
+	), startTime.Unix(), endTime.Unix())
+	if err := row.Scan(&metrics.SessionCount); err != nil {
+		return metrics, err
+	}
+
+	rows, err := db.Query(fmt.Sprintf(
+		`SELECT u.url, COUNT(*)
+         FROM "%s" s
+         JOIN "%s" u ON u.id = s.entry_url_id
+         WHERE s.start_ts >= ? AND s.start_ts < ?
+         GROUP BY s.entry_url_id`,
+		sessionTable, urlTable,
+	), startTime.Unix(), endTime.Unix())
+	if err != nil {
+		return metrics, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			url   string
+			count int
+		)
+		if err := rows.Scan(&url, &count); err != nil {
+			return metrics, err
+		}
+		metrics.EntryCounts[url] = count
+	}
+
+	if err := rows.Err(); err != nil {
+		return metrics, err
+	}
+
+	return metrics, nil
+}
+
+func collectSessionMetricsFromLogs(
+	repo *store.Repository,
+	websiteID string,
+	startTime, endTime time.Time,
+) (sessionMetrics, error) {
 	metrics := sessionMetrics{
 		EntryCounts: make(map[string]int),
 	}
 
 	query := fmt.Sprintf(`
-        SELECT timestamp, ip, user_browser, user_os, user_device, url
-        FROM "%s_nginx_logs" INDEXED BY idx_%s_session_key
-        WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?
-        ORDER BY ip, user_browser, user_os, user_device, timestamp`,
-		websiteID, websiteID)
+        SELECT l.timestamp, l.ip_id, l.ua_id, u.url
+        FROM "%s_nginx_logs" l INDEXED BY idx_%s_session_key
+        JOIN "%s_dim_url" u ON u.id = l.url_id
+        WHERE l.pageview_flag = 1 AND l.timestamp >= ? AND l.timestamp < ?
+        ORDER BY l.ip_id, l.ua_id, l.timestamp`,
+		websiteID, websiteID, websiteID)
 
 	rows, err := repo.GetDB().Query(query, startTime.Unix(), endTime.Unix())
 	if err != nil {
@@ -266,17 +417,15 @@ func collectSessionMetrics(
 	for rows.Next() {
 		var (
 			timestamp int64
-			ip        string
-			browser   string
-			os        string
-			device    string
 			url       string
+			ipID      int64
+			uaID      int64
 		)
-		if err := rows.Scan(&timestamp, &ip, &browser, &os, &device, &url); err != nil {
+		if err := rows.Scan(&timestamp, &ipID, &uaID, &url); err != nil {
 			return metrics, err
 		}
 
-		key := fmt.Sprintf("%s|%s|%s|%s", ip, browser, os, device)
+		key := fmt.Sprintf("%d|%d", ipID, uaID)
 
 		if !initialized || key != currentKey || timestamp-lastTimestamp > sessionGapSeconds {
 			currentKey = key
@@ -293,6 +442,20 @@ func collectSessionMetrics(
 	}
 
 	return metrics, nil
+}
+
+func tableExists(db *sql.DB, tableName string) (bool, error) {
+	row := db.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`, tableName,
+	)
+	var name string
+	if err := row.Scan(&name); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func buildEntryStats(counts map[string]int, limit int) ClientStats {
@@ -348,7 +511,7 @@ func (s *OverallStatsManager) activeVisitorCount(websiteID string) (int, error) 
 	start := now.Add(-15 * time.Minute)
 
 	query := fmt.Sprintf(`
-        SELECT COUNT(DISTINCT ip)
+        SELECT COUNT(DISTINCT ip_id)
         FROM "%s_nginx_logs"
         WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?`,
 		websiteID)
@@ -364,28 +527,25 @@ func (s *OverallStatsManager) activeVisitorCount(websiteID string) (int, error) 
 func (s *OverallStatsManager) newReturningCounts(
 	websiteID string, startTime, endTime time.Time,
 ) (int, int, error) {
+	startDay := dayBucket(startTime)
+	endDay := dayBucket(endTime)
+
 	query := fmt.Sprintf(`
         WITH active_ips AS (
-            SELECT DISTINCT ip
-            FROM "%s_nginx_logs"
-            WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?
-        ),
-        first_seen AS (
-            SELECT ip, MIN(timestamp) AS first_ts
-            FROM "%s_nginx_logs"
-            WHERE pageview_flag = 1
-            GROUP BY ip
+            SELECT DISTINCT ip_id
+            FROM "%s_agg_daily_ip"
+            WHERE day >= ? AND day <= ?
         )
         SELECT
-            COALESCE(SUM(CASE WHEN first_ts >= ? AND first_ts < ? THEN 1 ELSE 0 END), 0) AS new_uv,
-            COALESCE(SUM(CASE WHEN first_ts < ? THEN 1 ELSE 0 END), 0) AS returning_uv
-        FROM first_seen
-        INNER JOIN active_ips USING (ip)`,
+            COALESCE(SUM(CASE WHEN fs.first_ts >= ? AND fs.first_ts < ? THEN 1 ELSE 0 END), 0) AS new_uv,
+            COALESCE(SUM(CASE WHEN fs.first_ts < ? THEN 1 ELSE 0 END), 0) AS returning_uv
+        FROM active_ips a
+        LEFT JOIN "%s_first_seen" fs ON fs.ip_id = a.ip_id`,
 		websiteID, websiteID)
 
 	row := s.repo.GetDB().QueryRow(
 		query,
-		startTime.Unix(), endTime.Unix(),
+		startDay, endDay,
 		startTime.Unix(), endTime.Unix(),
 		startTime.Unix(),
 	)

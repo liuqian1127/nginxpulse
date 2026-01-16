@@ -136,6 +136,8 @@ services:
   - 日志输出位置：`file` 或 `stdout`。
 - `TASK_INTERVAL`（可选，默认：`1m`）
   - 扫描间隔，支持 `5m`、`25s` 等 Go duration 格式。
+- `LOG_RETENTION_DAYS`（可选，默认：`30`）
+  - 日志保留天数，超过天数会清理数据库中的旧日志。
 - `DEMO_MODE`（可选，默认：`false`）
   - 开启演示模式，定时生成模拟日志并直接写入数据库（不再解析日志文件）。
 - `SERVER_PORT`（可选，默认：`:8089`）
@@ -214,6 +216,8 @@ volumes:
   - `nginxpulse.db`：SQLite 数据库
   - `nginx_scan_state.json`：日志扫描游标
   - `ip2region.xdb`：IP 本地库
+- 维表去重版本首次启动会自动迁移旧日志表结构（数据量大时需等待迁移完成），并在清理日志时自动回收维表孤儿数据。
+- 数据库内包含维表与聚合表（`*_dim_*`、`*_agg_*`），用于去重和统计加速。
 - 环境变量覆盖：
   - `CONFIG_JSON` / `WEBSITES`
   - `LOG_DEST` / `TASK_INTERVAL` / `SERVER_PORT`

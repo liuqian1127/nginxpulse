@@ -110,8 +110,14 @@ func (m *SessionsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 	var queryBuilder strings.Builder
 	queryBuilder.WriteString(fmt.Sprintf(`
-        SELECT timestamp, ip, user_browser, user_os, user_device, url, domestic_location, global_location
-        FROM "%s_nginx_logs" INDEXED BY idx_%s_session_key`, query.WebsiteID, query.WebsiteID))
+        SELECT l.timestamp, l.ip_id, l.ua_id, ip.ip, ua.browser, ua.os, ua.device,
+               u.url, loc.domestic, loc.global
+        FROM "%s_nginx_logs" l INDEXED BY idx_%s_session_key
+        JOIN "%s_dim_ip" ip ON ip.id = l.ip_id
+        JOIN "%s_dim_ua" ua ON ua.id = l.ua_id
+        JOIN "%s_dim_url" u ON u.id = l.url_id
+        JOIN "%s_dim_location" loc ON loc.id = l.location_id`,
+		query.WebsiteID, query.WebsiteID, query.WebsiteID, query.WebsiteID, query.WebsiteID, query.WebsiteID))
 
 	conditions := make([]string, 0, 4)
 	args := make([]interface{}, 0, 6)
@@ -134,19 +140,19 @@ func (m *SessionsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 		args = append(args, timeEnd)
 	}
 	if ipFilter != "" {
-		conditions = append(conditions, "ip LIKE ?")
+		conditions = append(conditions, "ip.ip LIKE ?")
 		args = append(args, "%"+ipFilter+"%")
 	}
 	if deviceFilter != "" {
-		conditions = append(conditions, "user_device LIKE ?")
+		conditions = append(conditions, "ua.device LIKE ?")
 		args = append(args, "%"+deviceFilter+"%")
 	}
 	if browserFilter != "" {
-		conditions = append(conditions, "user_browser LIKE ?")
+		conditions = append(conditions, "ua.browser LIKE ?")
 		args = append(args, "%"+browserFilter+"%")
 	}
 	if osFilter != "" {
-		conditions = append(conditions, "user_os LIKE ?")
+		conditions = append(conditions, "ua.os LIKE ?")
 		args = append(args, "%"+osFilter+"%")
 	}
 
@@ -155,7 +161,7 @@ func (m *SessionsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 		queryBuilder.WriteString(strings.Join(conditions, " AND "))
 	}
 
-	queryBuilder.WriteString(" ORDER BY ip, user_browser, user_os, user_device, timestamp")
+	queryBuilder.WriteString(" ORDER BY l.ip_id, l.ua_id, l.timestamp")
 
 	rows, err := m.repo.GetDB().Query(queryBuilder.String(), args...)
 	if err != nil {
@@ -174,6 +180,8 @@ func (m *SessionsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	for rows.Next() {
 		var (
 			timestamp int64
+			ipID      int64
+			uaID      int64
 			ip        string
 			browser   string
 			os        string
@@ -183,11 +191,11 @@ func (m *SessionsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 			global    string
 		)
 
-		if err := rows.Scan(&timestamp, &ip, &browser, &os, &device, &url, &domestic, &global); err != nil {
+		if err := rows.Scan(&timestamp, &ipID, &uaID, &ip, &browser, &os, &device, &url, &domestic, &global); err != nil {
 			return result, fmt.Errorf("解析会话日志失败: %v", err)
 		}
 
-		key := fmt.Sprintf("%s|%s|%s|%s", ip, browser, os, device)
+		key := fmt.Sprintf("%d|%d", ipID, uaID)
 
 		if !initialized || key != currentKey || timestamp-lastTimestamp > sessionGapSeconds {
 			if initialized {

@@ -48,21 +48,27 @@ type FileState struct {
 }
 
 type LogParser struct {
-	repo      *store.Repository
-	statePath string
-	states    map[string]LogScanState // 各网站的扫描状态，以网站ID为键
-	demoMode  bool
+	repo          *store.Repository
+	statePath     string
+	states        map[string]LogScanState // 各网站的扫描状态，以网站ID为键
+	demoMode      bool
+	retentionDays int
 }
 
 // NewLogParser 创建新的日志解析器
 func NewLogParser(userRepoPtr *store.Repository) *LogParser {
 	statePath := filepath.Join(config.DataDir, "nginx_scan_state.json")
 	cfg := config.ReadConfig()
+	retentionDays := cfg.System.LogRetentionDays
+	if retentionDays <= 0 {
+		retentionDays = 30
+	}
 	parser := &LogParser{
-		repo:      userRepoPtr,
-		statePath: statePath,
-		states:    make(map[string]LogScanState),
-		demoMode:  cfg.System.DemoMode,
+		repo:          userRepoPtr,
+		statePath:     statePath,
+		states:        make(map[string]LogScanState),
+		demoMode:      cfg.System.DemoMode,
+		retentionDays: retentionDays,
 	}
 	parser.loadState()
 	enrich.InitPVFilters()
@@ -103,7 +109,7 @@ func (p *LogParser) updateState() {
 	}
 }
 
-// CleanOldLogs 清理45天前的日志数据
+// CleanOldLogs 清理保留天数之前的日志数据
 func (p *LogParser) CleanOldLogs() error {
 	today := time.Now().Format("2006-01-02")
 	currentHour := time.Now().Hour()
@@ -502,9 +508,9 @@ func (p *LogParser) parseNginxLogLine(line string) (*store.NginxLogRecord, error
 		return nil, err
 	}
 
-	cutoffTime := time.Now().AddDate(0, 0, -31)
+	cutoffTime := time.Now().AddDate(0, 0, -p.retentionDays)
 	if timestamp.Before(cutoffTime) {
-		return nil, errors.New("日志超过30天")
+		return nil, errors.New("日志超过保留天数")
 	}
 
 	decodedPath, err := url.QueryUnescape(matches[5])

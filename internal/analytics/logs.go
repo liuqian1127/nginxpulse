@@ -177,8 +177,40 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	offset := (page - 1) * pageSize
 	tableName := fmt.Sprintf("%s_nginx_logs", query.WebsiteID)
 	logAlias := "l"
+	firstSeenJoin := fmt.Sprintf(`LEFT JOIN "%s_first_seen" fs ON fs.ip_id = %s.ip_id`, query.WebsiteID, logAlias)
+	joinClause := fmt.Sprintf(`
+        JOIN "%s_dim_ip" ip ON ip.id = %s.ip_id
+        JOIN "%s_dim_url" u ON u.id = %s.url_id
+        JOIN "%s_dim_referer" r ON r.id = %s.referer_id
+        JOIN "%s_dim_ua" ua ON ua.id = %s.ua_id
+        JOIN "%s_dim_location" loc ON loc.id = %s.location_id`,
+		query.WebsiteID, logAlias,
+		query.WebsiteID, logAlias,
+		query.WebsiteID, logAlias,
+		query.WebsiteID, logAlias,
+		query.WebsiteID, logAlias,
+	)
 	column := func(name string) string {
-		return fmt.Sprintf("%s.%s", logAlias, name)
+		switch name {
+		case "ip":
+			return "ip.ip"
+		case "url":
+			return "u.url"
+		case "referer":
+			return "r.referer"
+		case "user_browser":
+			return "ua.browser"
+		case "user_os":
+			return "ua.os"
+		case "user_device":
+			return "ua.device"
+		case "domestic_location":
+			return "loc.domestic"
+		case "global_location":
+			return "loc.global"
+		default:
+			return fmt.Sprintf("%s.%s", logAlias, name)
+		}
 	}
 
 	// 构建查询语句
@@ -191,7 +223,7 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	}
 	selectColumns := make([]string, 0, len(selectFields))
 	for _, field := range selectFields {
-		selectColumns = append(selectColumns, column(field))
+		selectColumns = append(selectColumns, fmt.Sprintf("%s AS %s", column(field), field))
 	}
 	selectColumnsWithAlias := strings.Join(selectColumns, ", ")
 	selectColumnsRaw := strings.Join(selectFields, ", ")
@@ -199,25 +231,21 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	if !distinctIP {
 		if includeNewVisitor {
 			queryBuilder.WriteString(fmt.Sprintf(`
-        WITH first_seen AS (
-            SELECT ip, MIN(timestamp) AS first_ts
-            FROM "%s"
-            WHERE pageview_flag = 1
-            GROUP BY ip
-        )
         SELECT
             %s,
             CASE WHEN fs.first_ts >= ? AND fs.first_ts < ? THEN 1 ELSE 0 END AS is_new_visitor
         FROM "%s" %s
-        LEFT JOIN first_seen fs ON %s = fs.ip`,
-				tableName, selectColumnsWithAlias, tableName, logAlias, column("ip")))
+        %s
+        %s`,
+				selectColumnsWithAlias, tableName, logAlias, joinClause, firstSeenJoin))
 			args = append(args, newRangeStart, newRangeEnd)
 		} else {
 			queryBuilder.WriteString(fmt.Sprintf(`
         SELECT
             %s
-        FROM "%s" %s`,
-				selectColumnsWithAlias, tableName, logAlias))
+        FROM "%s" %s
+        %s`,
+				selectColumnsWithAlias, tableName, logAlias, joinClause))
 		}
 	}
 
@@ -296,19 +324,14 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 		var baseQuery strings.Builder
 		if includeNewVisitor {
 			baseQuery.WriteString(fmt.Sprintf(`
-        WITH first_seen AS (
-            SELECT ip, MIN(timestamp) AS first_ts
-            FROM "%s"
-            WHERE pageview_flag = 1
-            GROUP BY ip
-        ),
         base AS (
             SELECT
                 %s,
                 CASE WHEN fs.first_ts >= ? AND fs.first_ts < ? THEN 1 ELSE 0 END AS is_new_visitor
             FROM "%s" %s
-            LEFT JOIN first_seen fs ON %s = fs.ip`,
-				tableName, selectColumnsWithAlias, tableName, logAlias, column("ip")))
+            %s
+            %s`,
+				selectColumnsWithAlias, tableName, logAlias, joinClause, firstSeenJoin))
 			if len(conditions) > 0 {
 				baseQuery.WriteString(" WHERE ")
 				baseQuery.WriteString(strings.Join(conditions, " AND "))
@@ -319,8 +342,9 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
         WITH base AS (
             SELECT
                 %s
-            FROM "%s" %s`,
-				selectColumnsWithAlias, tableName, logAlias))
+            FROM "%s" %s
+            %s`,
+				selectColumnsWithAlias, tableName, logAlias, joinClause))
 			if len(conditions) > 0 {
 				baseQuery.WriteString(" WHERE ")
 				baseQuery.WriteString(strings.Join(conditions, " AND "))
@@ -406,18 +430,13 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 	needNewVisitorJoin := includeNewVisitor && newVisitorFilter != "all"
 	if needNewVisitorJoin {
 		countQuery.WriteString(fmt.Sprintf(`
-        WITH first_seen AS (
-            SELECT ip, MIN(timestamp) AS first_ts
-            FROM "%s"
-            WHERE pageview_flag = 1
-            GROUP BY ip
-        )
         SELECT %s
         FROM "%s" %s
-        LEFT JOIN first_seen fs ON %s = fs.ip`,
-			countSelect(distinctIP), tableName, tableName, logAlias, column("ip")))
+        %s
+        %s`,
+			countSelect(distinctIP), tableName, logAlias, joinClause, firstSeenJoin))
 	} else {
-		countQuery.WriteString(fmt.Sprintf(`SELECT %s FROM "%s" %s`, countSelect(distinctIP), tableName, logAlias))
+		countQuery.WriteString(fmt.Sprintf(`SELECT %s FROM "%s" %s %s`, countSelect(distinctIP), tableName, logAlias, joinClause))
 	}
 
 	var countArgs []interface{}
@@ -514,7 +533,7 @@ func (m *LogsStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 func countSelect(distinctIP bool) string {
 	if distinctIP {
-		return "COUNT(DISTINCT l.ip)"
+		return "COUNT(DISTINCT l.ip_id)"
 	}
 	return "COUNT(*)"
 }

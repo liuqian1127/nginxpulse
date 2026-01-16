@@ -75,22 +75,27 @@ func (m *RealtimeStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 	result.DeviceBreakdown = m.deviceBreakdown(tableName, startTime, endTime)
 
-	refererExpr := buildRealtimeRefererExpr(query.WebsiteID)
-	referers, _ := m.queryTopItems(tableName, refererExpr, refererExpr, startTime, endTime, 10, true)
+	refererExpr := buildRealtimeRefererExpr(query.WebsiteID, "r.referer")
+	refererJoin := fmt.Sprintf(`JOIN "%s_dim_referer" r ON r.id = l.referer_id`, query.WebsiteID)
+	referers, _ := m.queryTopItems(tableName, refererJoin, refererExpr, refererExpr, startTime, endTime, 10, true)
 	result.Referers = referers
 
-	pages, _ := m.queryTopItems(tableName, "url", "url", startTime, endTime, 10, false)
+	urlJoin := fmt.Sprintf(`JOIN "%s_dim_url" u ON u.id = l.url_id`, query.WebsiteID)
+	pages, _ := m.queryTopItems(tableName, urlJoin, "u.url", "u.url", startTime, endTime, 10, false)
 	result.Pages = pages
 
 	entryCounts, _ := m.entryPages(tableName, startTime, endTime)
 	result.EntryPages = entryCounts
 
-	browsers, _ := m.queryTopItems(tableName, "user_browser", "user_browser", startTime, endTime, 10, true)
+	uaJoin := fmt.Sprintf(`JOIN "%s_dim_ua" ua ON ua.id = l.ua_id`, query.WebsiteID)
+	browsers, _ := m.queryTopItems(tableName, uaJoin, "ua.browser", "ua.browser", startTime, endTime, 10, true)
 	result.Browsers = browsers
 
-	locationExpr := "CASE WHEN instr(domestic_location, '·') > 0 THEN substr(domestic_location, instr(domestic_location, '·') + 1) ELSE domestic_location END"
+	locationExpr := "CASE WHEN instr(loc.domestic, '·') > 0 THEN substr(loc.domestic, instr(loc.domestic, '·') + 1) ELSE loc.domestic END"
+	locationJoin := fmt.Sprintf(`JOIN "%s_dim_location" loc ON loc.id = l.location_id`, query.WebsiteID)
 	locations, _ := m.queryTopItems(
 		tableName,
+		locationJoin,
 		locationExpr,
 		locationExpr,
 		startTime,
@@ -105,7 +110,7 @@ func (m *RealtimeStatsManager) Query(query StatsQuery) (StatsResult, error) {
 
 func (m *RealtimeStatsManager) activeVisitorCount(tableName string, startTime, endTime time.Time) (int, error) {
 	query := fmt.Sprintf(`
-        SELECT COUNT(DISTINCT ip)
+        SELECT COUNT(DISTINCT ip_id)
         FROM "%s"
         WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?`,
 		tableName)
@@ -120,7 +125,7 @@ func (m *RealtimeStatsManager) activeVisitorCount(tableName string, startTime, e
 
 func (m *RealtimeStatsManager) activeSeries(tableName string, startTime, endTime time.Time, window int) ([]int, error) {
 	query := fmt.Sprintf(`
-        SELECT (timestamp / 60) as bucket, COUNT(DISTINCT ip) as uv
+        SELECT (timestamp / 60) as bucket, COUNT(DISTINCT ip_id) as uv
         FROM "%s"
         WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?
         GROUP BY bucket`,
@@ -155,11 +160,12 @@ func (m *RealtimeStatsManager) activeSeries(tableName string, startTime, endTime
 
 func (m *RealtimeStatsManager) deviceBreakdown(tableName string, startTime, endTime time.Time) []RealtimeItem {
 	query := fmt.Sprintf(`
-        SELECT user_device, COUNT(DISTINCT ip) as uv
-        FROM "%s"
-        WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?
-        GROUP BY user_device`,
-		tableName)
+        SELECT ua.device, COUNT(DISTINCT l.ip_id) as uv
+        FROM "%s" l
+        JOIN "%s_dim_ua" ua ON ua.id = l.ua_id
+        WHERE l.pageview_flag = 1 AND l.timestamp >= ? AND l.timestamp < ?
+        GROUP BY ua.device`,
+		tableName, strings.TrimSuffix(tableName, "_nginx_logs"))
 
 	rows, err := m.repo.GetDB().Query(query, startTime.Unix(), endTime.Unix())
 	if err != nil {
@@ -200,6 +206,7 @@ func (m *RealtimeStatsManager) deviceBreakdown(tableName string, startTime, endT
 
 func (m *RealtimeStatsManager) queryTopItems(
 	tableName string,
+	joinClause string,
 	selectExpr string,
 	groupExpr string,
 	startTime, endTime time.Time,
@@ -211,17 +218,18 @@ func (m *RealtimeStatsManager) queryTopItems(
 	}
 	countExpr := "COUNT(*)"
 	if distinctIP {
-		countExpr = "COUNT(DISTINCT ip)"
+		countExpr = "COUNT(DISTINCT l.ip_id)"
 	}
 
 	query := fmt.Sprintf(`
         SELECT %[1]s as key, %[2]s as cnt
-        FROM "%[3]s"
-        WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?
-        GROUP BY %[4]s
+        FROM "%[3]s" l
+        %[4]s
+        WHERE l.pageview_flag = 1 AND l.timestamp >= ? AND l.timestamp < ?
+        GROUP BY %[5]s
         ORDER BY cnt DESC
         LIMIT ?`,
-		selectExpr, countExpr, tableName, groupExpr)
+		selectExpr, countExpr, tableName, joinClause, groupExpr)
 
 	rows, err := m.repo.GetDB().Query(query, startTime.Unix(), endTime.Unix(), limit)
 	if err != nil {
@@ -268,11 +276,12 @@ func (m *RealtimeStatsManager) entryPages(
 	startTime, endTime time.Time,
 ) ([]RealtimeItem, error) {
 	query := fmt.Sprintf(`
-        SELECT timestamp, ip, user_browser, user_os, user_device, url
-        FROM "%s"
-        WHERE pageview_flag = 1 AND timestamp >= ? AND timestamp < ?
-        ORDER BY ip, user_browser, user_os, user_device, timestamp`,
-		tableName)
+        SELECT l.timestamp, l.ip_id, l.ua_id, u.url
+        FROM "%s" l
+        JOIN "%s_dim_url" u ON u.id = l.url_id
+        WHERE l.pageview_flag = 1 AND l.timestamp >= ? AND l.timestamp < ?
+        ORDER BY l.ip_id, l.ua_id, l.timestamp`,
+		tableName, strings.TrimSuffix(tableName, "_nginx_logs"))
 
 	rows, err := m.repo.GetDB().Query(query, startTime.Unix(), endTime.Unix())
 	if err != nil {
@@ -290,18 +299,16 @@ func (m *RealtimeStatsManager) entryPages(
 	for rows.Next() {
 		var (
 			timestamp int64
-			ip        string
-			browser   string
-			os        string
-			device    string
 			url       string
+			ipID      int64
+			uaID      int64
 		)
 
-		if err := rows.Scan(&timestamp, &ip, &browser, &os, &device, &url); err != nil {
+		if err := rows.Scan(&timestamp, &ipID, &uaID, &url); err != nil {
 			return nil, err
 		}
 
-		key := fmt.Sprintf("%s|%s|%s|%s", ip, browser, os, device)
+		key := fmt.Sprintf("%d|%d", ipID, uaID)
 		if !initialized || key != currentKey || timestamp-lastTimestamp > sessionGapSeconds {
 			entryCounts[url]++
 			currentKey = key
@@ -344,18 +351,19 @@ func (m *RealtimeStatsManager) entryPages(
 	return result, nil
 }
 
-func buildRealtimeRefererExpr(websiteID string) string {
+func buildRealtimeRefererExpr(websiteID string, refererColumn string) string {
 	internalCond := ""
 	if website, ok := config.GetWebsiteByID(websiteID); ok {
-		internalCond = buildInternalRefererCondition(website.Domains)
+		internalCond = buildInternalRefererCondition(website.Domains, refererColumn)
 	}
 	if internalCond != "" {
 		return fmt.Sprintf(
-			"CASE WHEN referer = '-' OR referer = '' THEN '直接输入网址访问' WHEN %s THEN '站内访问' ELSE referer END",
+			"CASE WHEN %[1]s = '-' OR %[1]s = '' THEN '直接输入网址访问' WHEN %s THEN '站内访问' ELSE %[1]s END",
+			refererColumn,
 			internalCond,
 		)
 	}
-	return "CASE WHEN referer = '-' OR referer = '' THEN '直接输入网址访问' ELSE referer END"
+	return fmt.Sprintf("CASE WHEN %[1]s = '-' OR %[1]s = '' THEN '直接输入网址访问' ELSE %[1]s END", refererColumn)
 }
 
 func safePercent(value, total int) float64 {
