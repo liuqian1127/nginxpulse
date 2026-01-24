@@ -14,6 +14,10 @@ APP_UID="${PUID:-}"
 APP_GID="${PGID:-}"
 APP_USER="nginxpulse"
 APP_GROUP="nginxpulse"
+USE_EMBEDDED_PG=1
+if [ -n "${DB_DSN:-}" ]; then
+  USE_EMBEDDED_PG=0
+fi
 
 if [ -n "$APP_GID" ]; then
   EXISTING_GROUP="$(awk -F: -v gid="$APP_GID" '$3==gid{print $1; exit}' /etc/group)"
@@ -45,9 +49,11 @@ if ! is_mount_point "$DATA_DIR"; then
   echo "nginxpulse: $DATA_DIR is not a mounted volume. Please bind-mount a host directory to $DATA_DIR." >&2
   exit 1
 fi
-if ! is_mount_point "$PGDATA"; then
-  echo "nginxpulse: $PGDATA is not a mounted volume. Please bind-mount a host directory to $PGDATA." >&2
-  exit 1
+if [ "$USE_EMBEDDED_PG" = "1" ]; then
+  if ! is_mount_point "$PGDATA"; then
+    echo "nginxpulse: $PGDATA is not a mounted volume. Please bind-mount a host directory to $PGDATA." >&2
+    exit 1
+  fi
 fi
 
 if [ "$(id -u)" = "0" ]; then
@@ -60,14 +66,16 @@ if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$DATA_DIR/.write_test' && rm 
   echo "nginxpulse: $DATA_DIR is not writable; file logging may fail and will fall back to stdout" >&2
 fi
 
-if [ "$(id -u)" = "0" ]; then
-  if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$PGDATA/.write_test' && rm -f '$PGDATA/.write_test'" >/dev/null 2>&1; then
-    chown -R "$APP_USER:$APP_GROUP" "$PGDATA" 2>/dev/null || true
+if [ "$USE_EMBEDDED_PG" = "1" ]; then
+  if [ "$(id -u)" = "0" ]; then
+    if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$PGDATA/.write_test' && rm -f '$PGDATA/.write_test'" >/dev/null 2>&1; then
+      chown -R "$APP_USER:$APP_GROUP" "$PGDATA" 2>/dev/null || true
+    fi
   fi
-fi
 
-if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$PGDATA/.write_test' && rm -f '$PGDATA/.write_test'" >/dev/null 2>&1; then
-  echo "nginxpulse: $PGDATA is not writable; postgres may fail to start" >&2
+  if ! su-exec "$APP_USER:$APP_GROUP" sh -lc "touch '$PGDATA/.write_test' && rm -f '$PGDATA/.write_test'" >/dev/null 2>&1; then
+    echo "nginxpulse: $PGDATA is not writable; postgres may fail to start" >&2
+  fi
 fi
 
 init_postgres() {
@@ -122,12 +130,14 @@ if [ -z "${DB_DSN:-}" ]; then
   export DB_DSN="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_CONNECT_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable"
 fi
 
-init_postgres
-if ! start_postgres; then
-  echo "nginxpulse: postgres did not become ready" >&2
-  exit 1
+if [ "$USE_EMBEDDED_PG" = "1" ]; then
+  init_postgres
+  if ! start_postgres; then
+    echo "nginxpulse: postgres did not become ready" >&2
+    exit 1
+  fi
+  ensure_database
 fi
-ensure_database
 
 if command -v nginx >/dev/null 2>&1; then
   su-exec "$APP_USER:$APP_GROUP" /app/nginxpulse "$@" &
