@@ -1,7 +1,8 @@
 diff.patch
 var/nginxpulse_data/
 bin/
-.wiki.bak.*/
+.wiki
+.wiki.*
 docker_local/
 weblog_eg/
 /nginxpulse
