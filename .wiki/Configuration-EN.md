@@ -77,7 +77,7 @@
 
 ### Log parsing fields
 Named fields needed by the parser (aliases allowed):
-- IP: `ip`, `remote_addr`, `client_ip`
+- IP: `ip`, `remote_addr`, `client_ip`, `http_x_forwarded_for`
 - Time: `time`, `time_local`, `time_iso8601`
 - Method: `method`, `request_method`
 - URL: `url`, `request_uri`, `uri`, `path`
@@ -86,9 +86,23 @@ Named fields needed by the parser (aliases allowed):
 - Referer: `referer`, `http_referer`
 - UA: `ua`, `user_agent`, `http_user_agent`
 
+Supported `logFormat` variables (common):
+- `$remote_addr`, `$http_x_forwarded_for`, `$remote_user`, `$remote_port`
+- `$time_local`, `$time_iso8601`
+- `$request`, `$request_method`, `$request_uri`, `$uri`, `$args`, `$query_string`, `$request_length`
+- `$host`, `$server_name`, `$scheme`
+- `$status`, `$body_bytes_sent`, `$bytes_sent`
+- `$http_referer`, `$http_user_agent`
+- `$upstream_addr`, `$upstream_status`, `$upstream_response_time`, `$upstream_connect_time`, `$upstream_header_time`
+
 `logFormat` example:
 ```json
 "logFormat": "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\""
+```
+
+`logFormat` example (with proxy + upstream):
+```json
+"logFormat": "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\" \"$http_x_forwarded_for\" $host $scheme $request_length $remote_port $upstream_addr $upstream_status $upstream_response_time $upstream_connect_time $upstream_header_time"
 ```
 
 `logRegex` example:
