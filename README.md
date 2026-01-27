@@ -198,6 +198,27 @@ PV_EXCLUDE_IPS='[]'
 3) 日志时间不正确  
 通常是运行环境时区未同步导致。请确认 Docker/系统时区正确，并按“时区设置（重要）”章节调整后重新解析日志。
 
+4) 无法启动
+报错tmp目录无权限写入问题，如果容器启动后出现如下所示的报错，请在宿主机随便找个目录，挂载进去即可。
+```bash
+nginxpulse: initializing postgres data dir at /app/var/pgdata
+/app/entrypoint.sh: line 91: can't create /tmp/tmp.KOdAPn: Permission denied
+```
+解决办法：
+```bash
+-v ./dockertmp:/tmp:rw 
+```
+
+5) 初始化时报错日志无法访问
+
+先排查是不是宿主机的日志目录权限问题，确保容器内可以访问。
+
+如果权限没问题，可以尝试加多一个WEBSITES参数解决
+```bash
+-e WEBSITES=
+```
+
+![5afcd951a7076cd15a67e535ec530af3](https://resource.kaisir.cn/uploads/MarkDownImg/20260127/2uL4ws.png)
 ## 目录结构与主要文件
 
 ```
