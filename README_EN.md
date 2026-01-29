@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/brand-mark.svg" alt="NginxPulse Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/likaia/nginxpulse/main/docs/brand-mark.svg" alt="NginxPulse Logo" width="120" height="120">
 </p>
 
 <p align="center">
-  English | <a href="README.md">简体中文</a>
+  English | <a href="https://github.com/likaia/nginxpulse/blob/main/README.md">简体中文</a>
 </p>
 
 # NginxPulse
@@ -14,9 +14,9 @@ Source repository: https://github.com/likaia/nginxpulse
 
 > ⚠️ Note: This document focuses on quick usage. For detailed docs and example configs, see the Wiki: https://github.com/likaia/nginxpulse/wiki
 
-![demo-img-1.png](docs/demo-img-1.png)
+![demo-img-1.png](https://raw.githubusercontent.com/likaia/nginxpulse/main/docs/demo-img-1.png)
 
-![demo-img-2.png](docs/demo-img-2.png)
+![demo-img-2.png](https://raw.githubusercontent.com/likaia/nginxpulse/main/docs/demo-img-2.png)
 
 ## Table of Contents
 - [Tech Stack](#tech-stack)
@@ -312,9 +312,9 @@ For more details on analytics definitions or API extension points, start with `i
 Thank you very much for your [coin investment](https://resource.kaisir.cn/uploads/MarkDownImg/20260128/pEZcuA.jpg) for your support of this project.
 
 <p align="left">
-  <img src="docs/thanks/supporter-1.png" width="60" height="60" alt="supporter-1" />
-  <img src="docs/thanks/supporter-2.png" width="60" height="60" alt="supporter-2" />
-  <img src="docs/thanks/supporter-3.png" width="60" height="60" alt="supporter-3" />
+  <img src="https://raw.githubusercontent.com/likaia/nginxpulse/main/docs/thanks/supporter-1.png" width="60" height="60" alt="supporter-1" />
+  <img src="https://raw.githubusercontent.com/likaia/nginxpulse/main/docs/thanks/supporter-2.png" width="60" height="60" alt="supporter-2" />
+  <img src="https://raw.githubusercontent.com/likaia/nginxpulse/main/docs/thanks/supporter-3.png" width="60" height="60" alt="supporter-3" />
 </p>
 
 ## Final Notes
