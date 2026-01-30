@@ -18,11 +18,12 @@
             size="small"
             type="default"
             plain
-            icon="more-o"
             class="nav-icon-btn"
             :aria-label="t('app.sidebar.language')"
             @click="languageSheetVisible = true"
-          />
+          >
+            <i class="nav-icon ri-translate-2" aria-hidden="true"></i>
+          </van-button>
           <van-button
             size="small"
             type="default"
@@ -371,20 +372,20 @@ function onSelectLanguage(action: { value?: string }) {
 
 <style lang="scss" scoped>
 .mobile-nav {
-  --van-nav-bar-background: rgba(255, 255, 255, 0.92);
+  --van-nav-bar-background: rgba(255, 255, 255, 0.55);
   --van-nav-bar-title-text-color: #0f172a;
   --van-nav-bar-icon-color: #0f172a;
-  backdrop-filter: blur(14px);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.5);
 }
 
 :global(body.dark-mode) .mobile-nav {
-  --van-nav-bar-background: rgba(15, 23, 42, 0.92);
+  --van-nav-bar-background: rgba(15, 23, 42, 0.4);
   --van-nav-bar-title-text-color: #f8fafc;
   --van-nav-bar-icon-color: #f8fafc;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .mobile-brand {
@@ -400,7 +401,7 @@ function onSelectLanguage(action: { value?: string }) {
   height: 26px;
   border-radius: 8px;
   display: block;
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.1);
 }
 
 .nav-actions {
@@ -414,6 +415,14 @@ function onSelectLanguage(action: { value?: string }) {
   min-width: 36px;
   height: 32px;
   border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.nav-icon {
+  font-size: 18px;
 }
 
 .theme-emoji {
