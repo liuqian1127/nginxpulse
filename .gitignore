@@ -10,6 +10,7 @@ weblog_eg/
 .DS_Store
 node_modules/
 dist/
+webapp_mobile/.vite/
 appstore_pr/
 internal/webui/dist/
 internal/webui/dist_mobile/
