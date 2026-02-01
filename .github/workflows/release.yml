@@ -48,12 +48,20 @@ jobs:
           cd webapp
           npm install
           npm run build
+      - name: Build mobile frontend
+        run: |
+          cd webapp_mobile
+          npm install
+          npm run build
 
       - name: Prepare embedded assets
         run: |
           rm -rf internal/webui/dist
           mkdir -p internal/webui/dist
           cp -R webapp/dist/. internal/webui/dist/
+          rm -rf internal/webui/dist_mobile
+          mkdir -p internal/webui/dist_mobile
+          cp -R webapp_mobile/dist/. internal/webui/dist_mobile/
 
       - name: Build binary
         env:
