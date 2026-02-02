@@ -50,6 +50,7 @@
   --van-tabbar-item-active-color: var(--mobile-primary);
   --van-tabbar-item-text-color: var(--mobile-muted);
   --van-tabbar-item-font-size: 12px;
+  --mobile-input-font-size: 16px;
 }
 
 body {
@@ -59,6 +60,14 @@ body {
     var(--mobile-bg);
   color: var(--mobile-text);
   font-family: "Sora", "Noto Sans SC", sans-serif;
+}
+
+input,
+textarea,
+select,
+.van-field__control,
+.van-search__input {
+  font-size: var(--mobile-input-font-size);
 }
 
 body::before {
@@ -897,7 +906,7 @@ body.dark-mode .method-pill {
 }
 
 .mobile-filter-field .van-field__control {
-  font-size: 14px;
+  font-size: var(--mobile-input-font-size);
 }
 
 .log-detail-header {
