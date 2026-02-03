@@ -6,15 +6,25 @@
         <p class="title-sub">{{ t('logs.subtitle') }}</p>
       </div>
       <div class="header-actions">
-        <WebsiteSelect
-          v-model="currentWebsiteId"
-          :websites="websites"
-          :loading="websitesLoading"
-          id="logs-website-selector"
-          :label="t('common.website')"
-        />
-        <SystemNotifications />
-        <ThemeToggle />
+        <HeaderToolbar>
+          <template #primary>
+            <div class="site-select-pill">
+              <span class="site-label">{{ t('common.website') }}</span>
+              <WebsiteSelect
+                v-model="currentWebsiteId"
+                class="website-select-compact"
+                :websites="websites"
+                :loading="websitesLoading"
+                id="logs-website-selector"
+                label=""
+              />
+            </div>
+          </template>
+          <template #utility>
+            <SystemNotifications />
+            <ThemeToggle />
+          </template>
+        </HeaderToolbar>
       </div>
     </header>
 
@@ -605,6 +615,7 @@ import type { IPGeoAnomalyLog, LogsExportJob, WebsiteInfo } from '@/api/types';
 import { formatTraffic, getUserPreference, saveUserPreference } from '@/utils';
 import { formatBrowserLabel, formatDeviceLabel, formatLocationLabel, formatOSLabel, formatRefererLabel } from '@/i18n/mappings';
 import { normalizeLocale } from '@/i18n';
+import HeaderToolbar from '@/components/HeaderToolbar.vue';
 import SystemNotifications from '@/components/SystemNotifications.vue';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import WebsiteSelect from '@/components/WebsiteSelect.vue';
@@ -2052,7 +2063,7 @@ function nextPage() {
 .logs-ip-notice {
   padding: 10px 14px;
   margin-bottom: 18px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: rgba(var(--primary-color-rgb), 0.12);
   color: var(--accent-color);
   font-size: 13px;
@@ -2103,7 +2114,7 @@ function nextPage() {
 
 .search-btn {
   font-weight: 600;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   min-width: 88px;
   padding: 0 16px;
 }
@@ -2155,7 +2166,7 @@ function nextPage() {
 
 .filter-row-toggles {
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: var(--panel-muted);
   border: 1px solid var(--border);
   gap: 10px;
@@ -2166,7 +2177,7 @@ function nextPage() {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
   background: var(--panel-muted);
   border: 1px solid var(--border);
   font-size: 12px;
@@ -2221,7 +2232,7 @@ function nextPage() {
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 600;
@@ -2317,7 +2328,7 @@ function nextPage() {
   position: relative;
   display: flex;
   flex-direction: column;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--panel);
 }
@@ -2406,7 +2417,7 @@ function nextPage() {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--panel);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-soft);
@@ -2446,7 +2457,7 @@ function nextPage() {
 
 .log-detail-item {
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: var(--panel-muted);
   border: 1px solid var(--border);
   display: flex;
@@ -2500,7 +2511,7 @@ function nextPage() {
 }
 
 .page-btn {
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
 }
 
 .action-divider {
@@ -2516,7 +2527,7 @@ function nextPage() {
   gap: 6px;
   height: var(--control-height);
   padding: 0 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   border: 1px dashed rgba(var(--primary-color-rgb), 0.3);
   background: rgba(var(--primary-color-rgb), 0.06);
   color: var(--accent-color);
@@ -2532,14 +2543,14 @@ function nextPage() {
 }
 
 .reparse-btn {
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
   min-width: 118px;
   padding: 0 12px;
 }
 
 .export-btn {
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
   min-width: 112px;
   padding: 0 16px;
@@ -2579,7 +2590,7 @@ function nextPage() {
 
 .ip-geo-issue-list {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
@@ -2593,7 +2604,7 @@ function nextPage() {
 
 .export-progress {
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(59, 130, 246, 0.15);
   overflow: hidden;
 }

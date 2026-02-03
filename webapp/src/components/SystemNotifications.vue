@@ -409,7 +409,7 @@ onUnmounted(() => {
   position: relative;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
@@ -432,7 +432,7 @@ onUnmounted(() => {
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--error-color);
   color: #fff;
   font-size: 11px;
@@ -467,7 +467,7 @@ onUnmounted(() => {
 
 .system-notice-item {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   background: var(--panel);
   display: flex;
@@ -538,7 +538,7 @@ onUnmounted(() => {
 
 .system-notice-load {
   border: 1px dashed rgba(var(--primary-color-rgb), 0.4);
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
   padding: 8px 12px;
   background: rgba(var(--primary-color-rgb), 0.06);
   color: var(--accent-color);
@@ -612,7 +612,7 @@ onUnmounted(() => {
   gap: 12px;
   font-size: 12px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
   border: 1px solid var(--border);
   background: var(--panel);
 }

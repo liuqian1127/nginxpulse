@@ -6,14 +6,42 @@
         <p class="title-sub">{{ t('overview.subtitle') }}</p>
       </div>
       <div class="header-actions">
-        <div class="inline-metric">{{ t('common.traffic') }} <span>{{ trafficText }}</span></div>
-        <WebsiteSelect
-          v-model="currentWebsiteId"
-          :websites="websites"
-          :loading="websitesLoading"
-          id="website-selector"
-          :label="t('common.website')"
-        />
+        <HeaderToolbar>
+          <template #primary>
+            <div class="traffic-pill">
+              <span class="traffic-label">{{ t('common.traffic') }}</span>
+              <span class="traffic-value">{{ trafficText }}</span>
+            </div>
+            <div class="site-select-pill">
+              <span class="site-label">{{ t('common.website') }}</span>
+              <WebsiteSelect
+                v-model="currentWebsiteId"
+                class="website-select-compact"
+                :websites="websites"
+                :loading="websitesLoading"
+                id="website-selector"
+                label=""
+              />
+            </div>
+          </template>
+          <template #utility>
+            <button
+              type="button"
+              class="auto-refresh-toggle"
+              :class="{ inactive: !autoRefreshAllowed, active: autoRefreshEnabled }"
+              :title="autoRefreshAllowed ? t('overview.autoRefreshHint') : t('overview.autoRefreshTodayOnly')"
+              :disabled="!autoRefreshAllowed"
+              :aria-pressed="autoRefreshEnabled"
+              @click="toggleAutoRefresh"
+            >
+              <i class="ri-refresh-line" aria-hidden="true"></i>
+              <span class="auto-refresh-text">{{ t('overview.autoRefresh') }}</span>
+              <span v-if="!autoRefreshAllowed" class="auto-refresh-hint">{{ t('overview.autoRefreshTodayOnly') }}</span>
+            </button>
+            <SystemNotifications />
+            <ThemeToggle />
+          </template>
+        </HeaderToolbar>
         <div class="select-group sr-only">
           <label class="select-label" for="date-range">{{ t('common.date') }}</label>
           <Dropdown
@@ -25,8 +53,6 @@
             optionValue="value"
           />
         </div>
-        <SystemNotifications />
-        <ThemeToggle />
       </div>
     </header>
 
@@ -614,6 +640,7 @@ import type { SimpleSeriesStats, TimeSeriesStats, WebsiteInfo } from '@/api/type
 import { formatTraffic, getUserPreference, saveUserPreference } from '@/utils';
 import { Chart } from '@/utils/chartjs';
 import ParsingOverlay from '@/components/ParsingOverlay.vue';
+import HeaderToolbar from '@/components/HeaderToolbar.vue';
 import SystemNotifications from '@/components/SystemNotifications.vue';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import WebsiteSelect from '@/components/WebsiteSelect.vue';
@@ -650,6 +677,15 @@ const chartView = ref<'hourly' | 'daily'>('hourly');
 const mapView = ref<'china' | 'world'>('china');
 const overviewLoading = ref(false);
 const chartError = ref('');
+const autoRefreshEnabled = ref(getUserPreference('overviewAutoRefresh', 'false') === 'true');
+const autoRefreshAllowed = computed(() => dateRange.value === 'today');
+
+function toggleAutoRefresh() {
+  if (!autoRefreshAllowed.value) {
+    return;
+  }
+  autoRefreshEnabled.value = !autoRefreshEnabled.value;
+}
 
 const overall = ref<Record<string, any> | null>(null);
 const urlStats = ref<SimpleSeriesStats | null>(null);
@@ -673,9 +709,11 @@ let geoMapChart: echarts.ECharts | null = null;
 let overviewRequestId = 0;
 let chartRequestId = 0;
 let mapRequestId = 0;
+let autoRefreshTimer: number | null = null;
 
 const DETAIL_LIMIT = 50;
 const DETAIL_LOG_PAGE_SIZE = 30;
+const AUTO_REFRESH_INTERVAL = 3000;
 
 const dateRangeOptions = computed(() => [
   { value: 'today', label: t('common.today') },
@@ -1147,9 +1185,11 @@ const DETAIL_FILTER_LAYOUTS = computed(() => ({
 onMounted(() => {
   loadWebsites();
   initGeoMap();
+  restartAutoRefresh();
 });
 
 onBeforeUnmount(() => {
+  stopAutoRefresh();
   if (visitsChart) {
     visitsChart.destroy();
     visitsChart = null;
@@ -1174,6 +1214,7 @@ watch(currentWebsiteId, (value) => {
   }
   closeDetail();
   refreshOverview();
+  restartAutoRefresh();
 });
 
 watch(dateRange, (range) => {
@@ -1182,6 +1223,12 @@ watch(dateRange, (range) => {
   }
   closeDetail();
   refreshOverview();
+  restartAutoRefresh();
+});
+
+watch(autoRefreshEnabled, (value) => {
+  saveUserPreference('overviewAutoRefresh', value ? 'true' : 'false');
+  restartAutoRefresh();
 });
 
 watch([currentWebsiteId, dateRange, chartView], () => {
@@ -1267,12 +1314,14 @@ async function loadWebsites() {
   }
 }
 
-async function refreshOverview() {
+async function refreshOverview(silent = false) {
   if (!currentWebsiteId.value) {
     return;
   }
   const requestId = ++overviewRequestId;
-  overviewLoading.value = true;
+  if (!silent) {
+    overviewLoading.value = true;
+  }
   try {
     const range = dateRange.value;
     const [overallData, urlData, refererData, browserData, osData, deviceData] = await Promise.all([
@@ -1302,10 +1351,42 @@ async function refreshOverview() {
   } catch (error) {
     console.error('加载概况数据失败:', error);
   } finally {
-    if (requestId === overviewRequestId) {
+    if (requestId === overviewRequestId && !silent) {
       overviewLoading.value = false;
     }
   }
+}
+
+function startAutoRefresh() {
+  if (autoRefreshTimer) {
+    return;
+  }
+  if (!autoRefreshEnabled.value || !autoRefreshAllowed.value || !currentWebsiteId.value) {
+    return;
+  }
+  autoRefreshTimer = window.setInterval(() => {
+    if (!autoRefreshEnabled.value || !autoRefreshAllowed.value || !currentWebsiteId.value) {
+      stopAutoRefresh();
+      return;
+    }
+    if (document.visibilityState !== 'visible' || overviewLoading.value) {
+      return;
+    }
+    refreshOverview(true);
+  }, AUTO_REFRESH_INTERVAL);
+}
+
+function stopAutoRefresh() {
+  if (!autoRefreshTimer) {
+    return;
+  }
+  window.clearInterval(autoRefreshTimer);
+  autoRefreshTimer = null;
+}
+
+function restartAutoRefresh() {
+  stopAutoRefresh();
+  startAutoRefresh();
 }
 
 async function loadTimeSeries() {
@@ -2833,6 +2914,6 @@ function isExcludedGeoName(name: string) {
   color: #721c24;
   background-color: #f8d7da;
   border: 1px solid #f5c6cb;
-  border-radius: 4px;
+  border-radius: var(--radius-2xs);
 }
 </style>

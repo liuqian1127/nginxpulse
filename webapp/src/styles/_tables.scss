@@ -45,7 +45,7 @@
 
 .ranking-table tbody tr {
     background: linear-gradient(160deg, rgba(255, 255, 255, 0.7), var(--panel-muted));
-    border-radius: 12px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-soft);
     transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
@@ -56,11 +56,11 @@ body.dark-mode .ranking-table tbody tr {
 }
 
 .ranking-table tbody tr td:first-child {
-    border-radius: 12px 0 0 12px;
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 
 .ranking-table tbody tr td:last-child {
-    border-radius: 0 12px 12px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .ranking-table tbody tr:hover {
@@ -221,7 +221,7 @@ body.dark-mode .ranking-table tbody tr {
     width: 65%;
     height: 10px;
     background-color: rgba(var(--primary-color-rgb), 0.14);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     overflow: hidden;
 }
 

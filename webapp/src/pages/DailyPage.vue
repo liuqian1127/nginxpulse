@@ -5,24 +5,37 @@
       <p class="title-sub">{{ t('daily.subtitle') }}</p>
     </div>
     <div class="header-actions">
-      <WebsiteSelect
-        v-model="currentWebsiteId"
-        :websites="websites"
-        :loading="websitesLoading"
-        id="daily-website-selector"
-        :label="t('common.website')"
-      />
-      <DatePicker
-        v-model="currentDate"
-        class="daily-date-picker"
-        dateFormat="yy-mm-dd"
-        updateModelType="string"
-        :showClear="false"
-        showButtonBar
-        :showIcon="true"
-      />
-      <SystemNotifications />
-      <ThemeToggle />
+      <HeaderToolbar>
+        <template #primary>
+          <div class="site-select-pill">
+            <span class="site-label">{{ t('common.website') }}</span>
+            <WebsiteSelect
+              v-model="currentWebsiteId"
+              class="website-select-compact"
+              :websites="websites"
+              :loading="websitesLoading"
+              id="daily-website-selector"
+              label=""
+            />
+          </div>
+          <div class="site-select-pill">
+            <span class="site-label">{{ t('common.date') }}</span>
+            <DatePicker
+              v-model="currentDate"
+              class="daily-date-picker toolbar-date-picker"
+              dateFormat="yy-mm-dd"
+              updateModelType="string"
+              :showClear="false"
+              showButtonBar
+              :showIcon="true"
+            />
+          </div>
+        </template>
+        <template #utility>
+          <SystemNotifications />
+          <ThemeToggle />
+        </template>
+      </HeaderToolbar>
     </div>
   </header>
 
@@ -412,6 +425,7 @@ import { normalizeLocale } from '@/i18n';
 import { formatDate, getUserPreference, saveUserPreference } from '@/utils';
 import { Chart } from '@/utils/chartjs';
 import ParsingOverlay from '@/components/ParsingOverlay.vue';
+import HeaderToolbar from '@/components/HeaderToolbar.vue';
 import SystemNotifications from '@/components/SystemNotifications.vue';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import WebsiteSelect from '@/components/WebsiteSelect.vue';
@@ -1229,7 +1243,7 @@ function getDateFromQuery() {
 .daily-kpi-icon {
   width: 36px;
   height: 36px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1266,6 +1280,11 @@ function getDateFromQuery() {
 .daily-kpi-value {
   font-size: 28px;
   font-weight: 700;
+}
+
+:deep(.p-datepicker-dropdown) {
+  border-start-end-radius: var(--radius-pill);
+  border-end-end-radius: var(--radius-pill);
 }
 
 .daily-kpi-compare {
@@ -1396,7 +1415,7 @@ function getDateFromQuery() {
 }
 
 .daily-summary-card {
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 14px;
   border: 1px solid var(--border);
   background: var(--panel-muted);
@@ -1442,7 +1461,7 @@ function getDateFromQuery() {
   padding: 4px;
   background: var(--panel-muted);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   margin-bottom: 12px;
 }
 
@@ -1450,7 +1469,7 @@ function getDateFromQuery() {
   border: none;
   background: transparent;
   padding: 6px 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
@@ -1526,7 +1545,7 @@ function getDateFromQuery() {
 }
 
 .daily-device-card {
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   padding: 12px;
   display: flex;

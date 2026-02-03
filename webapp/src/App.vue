@@ -2,7 +2,7 @@
   <div class="app-shell" :class="{ 'setup-shell': setupRequired }">
     <SetupPage v-if="setupRequired" />
     <template v-else>
-      <aside class="sidebar">
+      <aside v-if="!hideSidebar" class="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <span class="brand-initials">NP</span>
@@ -141,6 +141,7 @@ const sidebarHint = computed(() => {
   return key ? t(key) : '';
 });
 const mainClass = computed(() => (route.meta.mainClass as string) || '');
+const hideSidebar = computed(() => shouldHideSidebar(route.query));
 
 const isActive = (path: string) => route.path === path;
 
@@ -254,6 +255,34 @@ function handleAccessKeyEvent(event: Event) {
   setAccessKeyErrorMessage(detail?.message || '');
 }
 
+function shouldHideSidebar(query: Record<string, unknown>) {
+  const truthy = new Set(['1', 'true', 'yes', 'on']);
+  const falsy = new Set(['0', 'false', 'no', 'off', 'hide']);
+  const pick = (value: unknown) => {
+    if (Array.isArray(value)) {
+      return value[0];
+    }
+    return value;
+  };
+
+  const hideSidebar = pick(query.hideSidebar);
+  if (hideSidebar !== undefined) {
+    return truthy.has(String(hideSidebar).toLowerCase());
+  }
+
+  const embed = pick(query.embed);
+  if (embed !== undefined) {
+    return truthy.has(String(embed).toLowerCase());
+  }
+
+  const sidebar = pick(query.sidebar);
+  if (sidebar !== undefined) {
+    return falsy.has(String(sidebar).toLowerCase());
+  }
+
+  return false;
+}
+
 async function submitAccessKey() {
   const value = accessKeyInput.value.trim();
   if (!value) {
@@ -311,7 +340,7 @@ const accessKeyErrorMessage = computed(() => {
   gap: 12px;
   padding: 12px 16px;
   margin-bottom: 16px;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid rgba(239, 68, 68, 0.2);
   background: rgba(239, 68, 68, 0.08);
   color: #991b1b;
@@ -324,7 +353,7 @@ const accessKeyErrorMessage = computed(() => {
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(239, 68, 68, 0.14);
   color: #b91c1c;
   font-weight: 700;
@@ -357,7 +386,7 @@ const accessKeyErrorMessage = computed(() => {
 .access-card {
   width: min(420px, 100%);
   background: var(--panel);
-  border-radius: 22px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   padding: 28px;
@@ -384,7 +413,7 @@ const accessKeyErrorMessage = computed(() => {
 .access-input {
   width: 100%;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--input-bg);
   color: var(--text);
@@ -399,7 +428,7 @@ const accessKeyErrorMessage = computed(() => {
 
 .access-submit {
   border: none;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 12px 14px;
   font-size: 14px;
   font-weight: 600;
@@ -439,7 +468,7 @@ const accessKeyErrorMessage = computed(() => {
 .app-version-dot {
   width: 6px;
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
 }

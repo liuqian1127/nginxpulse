@@ -100,6 +100,7 @@ export interface ConfigResponse {
   config: ConfigPayload;
   readonly: boolean;
   setup_required: boolean;
+  default_log_path?: string;
 }
 
 export interface ConfigSaveResponse {

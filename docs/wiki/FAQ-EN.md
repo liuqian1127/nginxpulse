@@ -27,3 +27,16 @@ Timezone issue. The project uses system timezone.
 ## 6. Does dev data persist?
 `dev_local.sh` uses docker volume `nginxpulse_pgdata` by default.
 Remove it manually if you want a clean start.
+
+## 7. Hide the left sidebar via URL
+Add any of the following query params to hide the left sidebar (useful for embeds):
+- `hideSidebar=1|true|yes|on`
+- `embed=1|true|yes|on`
+- `sidebar=0|false|no|off|hide`
+
+Examples:
+```text
+/settings?hideSidebar=1
+/realtime?embed=1
+/logs?sidebar=0
+```

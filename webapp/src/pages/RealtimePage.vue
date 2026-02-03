@@ -5,26 +5,36 @@
       <p class="title-sub">{{ t('realtime.subtitle') }}</p>
     </div>
     <div class="header-actions">
-      <WebsiteSelect
-        v-model="currentWebsiteId"
-        :websites="websites"
-        :loading="websitesLoading"
-        id="realtime-website-selector"
-        :label="t('common.website')"
-      />
-      <div class="realtime-range">
-        <button
-          v-for="option in windowOptions"
-          :key="option"
-          class="realtime-range-btn"
-          :class="{ active: currentWindow === option }"
-          @click="setWindow(option)"
-        >
-          {{ t('realtime.minutes', { value: option }) }}
-        </button>
-      </div>
-      <SystemNotifications />
-      <ThemeToggle />
+      <HeaderToolbar>
+        <template #primary>
+          <div class="site-select-pill">
+            <span class="site-label">{{ t('common.website') }}</span>
+            <WebsiteSelect
+              v-model="currentWebsiteId"
+              class="website-select-compact"
+              :websites="websites"
+              :loading="websitesLoading"
+              id="realtime-website-selector"
+              label=""
+            />
+          </div>
+          <div class="realtime-range toolbar-pill">
+            <button
+              v-for="option in windowOptions"
+              :key="option"
+              class="realtime-range-btn"
+              :class="{ active: currentWindow === option }"
+              @click="setWindow(option)"
+            >
+              {{ t('realtime.minutes', { value: option }) }}
+            </button>
+          </div>
+        </template>
+        <template #utility>
+          <SystemNotifications />
+          <ThemeToggle />
+        </template>
+      </HeaderToolbar>
     </div>
   </header>
 
@@ -273,6 +283,7 @@ import { formatBrowserLabel, formatLocationLabel, formatRefererLabel, normalizeD
 import { normalizeLocale } from '@/i18n';
 import { getUserPreference, saveUserPreference } from '@/utils';
 import ParsingOverlay from '@/components/ParsingOverlay.vue';
+import HeaderToolbar from '@/components/HeaderToolbar.vue';
 import SystemNotifications from '@/components/SystemNotifications.vue';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import WebsiteSelect from '@/components/WebsiteSelect.vue';
@@ -491,19 +502,15 @@ function formatPercent(value: number) { return n(Number(value || 0), 'percent');
 
 .realtime-range {
   display: inline-flex;
+  align-items: center;
   gap: 8px;
-  padding: 6px;
-  border-radius: 999px;
-  background: var(--panel-muted);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-soft);
 }
 
 .realtime-range-btn {
   border: none;
   background: transparent;
   padding: 6px 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-weight: 600;
   font-size: 12px;
   color: var(--muted);
@@ -566,7 +573,7 @@ function formatPercent(value: number) { return n(Number(value || 0), 'percent');
   display: block;
   width: 100%;
   min-height: 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-2xs);
   background: var(--panel-muted);
 }
 
@@ -587,7 +594,7 @@ function formatPercent(value: number) { return n(Number(value || 0), 'percent');
 
 .realtime-device-card {
   background: var(--panel-muted);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   padding: 12px;
   display: flex;
@@ -627,7 +634,7 @@ function formatPercent(value: number) { return n(Number(value || 0), 'percent');
 
 .realtime-rank {
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: rgba(245, 158, 11, 0.18);
   color: var(--accent);
   font-size: 11px;

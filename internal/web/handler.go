@@ -158,10 +158,15 @@ func SetupRoutes(
 			})
 			return
 		}
+		defaultLogPath := ""
+		if config.IsSetupMode() {
+			defaultLogPath = config.SuggestDefaultLogPath()
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"config":         cfg,
-			"readonly":       config.ConfigReadOnly(),
-			"setup_required": config.IsSetupMode(),
+			"config":           cfg,
+			"readonly":         config.ConfigReadOnly(),
+			"setup_required":   config.IsSetupMode(),
+			"default_log_path": defaultLogPath,
 		})
 	})
 

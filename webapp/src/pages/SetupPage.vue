@@ -156,20 +156,66 @@
                   <div class="setup-field-grid">
                     <div class="setup-field">
                       <label class="setup-label">{{ t('setup.fields.logType') }}</label>
-                      <input v-model.trim="site.logType" class="setup-input" type="text" />
+                      <input
+                        v-model.trim="site.logType"
+                        class="setup-input"
+                        type="text"
+                        :placeholder="t('setup.placeholders.logType')"
+                      />
                     </div>
                     <div class="setup-field">
                       <label class="setup-label">{{ t('setup.fields.timeLayout') }}</label>
-                      <input v-model.trim="site.timeLayout" class="setup-input" type="text" />
+                      <input
+                        v-model.trim="site.timeLayout"
+                        class="setup-input"
+                        type="text"
+                        :placeholder="t('setup.placeholders.timeLayout')"
+                      />
                     </div>
                   </div>
-                  <div class="setup-field">
-                    <label class="setup-label">{{ t('setup.fields.logFormat') }}</label>
-                    <input v-model.trim="site.logFormat" class="setup-input" type="text" />
-                  </div>
-                  <div class="setup-field">
-                    <label class="setup-label">{{ t('setup.fields.logRegex') }}</label>
-                    <input v-model.trim="site.logRegex" class="setup-input" type="text" />
+                  <div class="setup-parse-group">
+                    <div class="setup-parse-head">
+                      <div class="setup-parse-title">{{ t('setup.logValidation.groupTitle') }}</div>
+                      <div class="setup-parse-actions">
+                        <span
+                          class="setup-parse-status"
+                          :class="`is-${site.logValidationStatus}`"
+                          :title="site.logValidationMessage"
+                        >
+                          <span class="setup-parse-status-dot" aria-hidden="true"></span>
+                          {{ logValidationStatusLabel(site.logValidationStatus) }}
+                        </span>
+                        <button
+                          class="ghost-button setup-validate-btn"
+                          type="button"
+                          :disabled="!canValidateLogRule(site)"
+                          :title="canValidateLogRule(site) ? '' : t('setup.logValidation.needRule')"
+                          @click="openLogValidation(index)"
+                        >
+                          {{ t('setup.actions.validateLogRule') }}
+                        </button>
+                      </div>
+                    </div>
+                    <div class="setup-field">
+                      <label class="setup-label">{{ t('setup.fields.logFormat') }}</label>
+                      <input
+                        v-model.trim="site.logFormat"
+                        class="setup-input"
+                        type="text"
+                        :placeholder="t('setup.placeholders.logFormat')"
+                        @input="markLogValidationDirty(site)"
+                      />
+                    </div>
+                    <div class="setup-field">
+                      <label class="setup-label">{{ t('setup.fields.logRegex') }}</label>
+                      <input
+                        v-model.trim="site.logRegex"
+                        class="setup-input"
+                        type="text"
+                        :placeholder="t('setup.placeholders.logRegex')"
+                        @input="markLogValidationDirty(site)"
+                      />
+                    </div>
                   </div>
                   <div class="setup-field">
                     <label class="setup-label">{{ t('setup.fields.sourcesJson') }}</label>
@@ -437,14 +483,99 @@
       </div>
     </div>
   </div>
+
+  <Dialog
+    v-model:visible="logValidationVisible"
+    :header="t('setup.logValidation.title')"
+    modal
+    :draggable="false"
+    class="setup-log-validate-dialog"
+  >
+    <div class="setup-log-validate-sub">
+      {{ t('setup.logValidation.subtitle', { value: logValidationSiteLabel }) }}
+    </div>
+    <div class="setup-log-validate-body">
+      <div class="setup-log-validate-input">
+        <label class="setup-label">{{ t('setup.logValidation.sampleLabel') }}</label>
+        <textarea
+          v-model.trim="logValidationSample"
+          class="setup-textarea setup-log-validate-textarea"
+          rows="7"
+          :placeholder="t('setup.logValidation.samplePlaceholder')"
+        ></textarea>
+        <div class="setup-hint">{{ t('setup.logValidation.sampleHint') }}</div>
+      </div>
+      <div class="setup-log-validate-result">
+        <div class="setup-log-validate-summary" :class="`is-${logValidationResult.status}`">
+          <span class="setup-parse-status-dot" aria-hidden="true"></span>
+          <span>{{ logValidationResultLabel }}</span>
+        </div>
+        <div v-if="logValidationLoading" class="setup-log-validate-loading">
+          {{ t('common.loading') }}
+        </div>
+        <div v-else-if="logValidationResult.status === 'error'" class="setup-log-validate-error">
+          {{ logValidationResult.message }}
+        </div>
+        <div v-else-if="logValidationResult.status === 'success'" class="setup-log-validate-success">
+          <div class="setup-log-validate-source">
+            {{ logValidationResult.source === 'logRegex'
+              ? t('setup.logValidation.sourceRegex')
+              : t('setup.logValidation.sourceFormat') }}
+          </div>
+          <div class="setup-log-validate-line">
+            <span class="setup-log-validate-line-label">{{ t('setup.logValidation.matchedLine') }}</span>
+            <code>{{ logValidationResult.matchedLine }}</code>
+          </div>
+          <div class="setup-log-validate-table-wrap">
+            <table class="setup-log-validate-table">
+              <thead>
+                <tr>
+                  <th>{{ t('setup.logValidation.field') }}</th>
+                  <th>{{ t('setup.logValidation.value') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in logValidationResult.fields" :key="item.name">
+                  <td class="setup-log-validate-key">{{ item.name }}</td>
+                  <td class="setup-log-validate-value">{{ item.value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div v-else class="setup-log-validate-empty">
+          {{ t('setup.logValidation.resultIdle') }}
+        </div>
+      </div>
+    </div>
+    <div class="setup-log-validate-actions">
+      <button class="ghost-button" type="button" @click="logValidationVisible = false">
+        {{ t('common.close') }}
+      </button>
+      <button class="setup-primary-btn" type="button" :disabled="logValidationLoading" @click="runLogValidation">
+        {{ logValidationLoading ? t('common.loading') : t('setup.logValidation.run') }}
+      </button>
+    </div>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import Dialog from 'primevue/dialog';
 import { fetchConfig, restartSystem, saveConfig, validateConfig } from '@/api';
 import { normalizeLocale, setLocale } from '@/i18n';
 import type { ConfigPayload, FieldError, SourceConfig } from '@/api/types';
+
+type LogValidationStatus = 'idle' | 'success' | 'error';
+
+type LogValidationResult = {
+  status: LogValidationStatus;
+  message: string;
+  fields: Array<{ name: string; value: string }>;
+  matchedLine: string;
+  source: '' | 'logRegex' | 'logFormat';
+};
 
 interface WebsiteDraft {
   name: string;
@@ -453,6 +584,8 @@ interface WebsiteDraft {
   logType: string;
   logFormat: string;
   logRegex: string;
+  logValidationStatus: LogValidationStatus;
+  logValidationMessage: string;
   timeLayout: string;
   sourcesJson: string;
   whitelistEnabled: boolean;
@@ -530,6 +663,7 @@ const validationWarnings = ref<FieldError[]>([]);
 const fieldErrors = ref<Record<string, string>>({});
 const configReadonly = ref(false);
 const copyStatus = ref('');
+const defaultLogPath = ref('');
 let copyStatusTimer: number | null = null;
 
 const serverPort = ref(':8089');
@@ -570,14 +704,51 @@ const configPreview = computed(() => {
   return JSON.stringify(config, null, 2);
 });
 
-function createWebsiteDraft(): WebsiteDraft {
+const logValidationVisible = ref(false);
+const logValidationIndex = ref<number | null>(null);
+const logValidationSample = ref('');
+const logValidationLoading = ref(false);
+const logValidationResult = ref<LogValidationResult>(createLogValidationResult());
+
+const activeLogValidationSite = computed(() => {
+  if (logValidationIndex.value === null) {
+    return null;
+  }
+  return websiteDrafts.value[logValidationIndex.value] || null;
+});
+
+const logValidationSiteLabel = computed(() => {
+  if (logValidationIndex.value === null) {
+    return '';
+  }
+  const site = activeLogValidationSite.value;
+  if (!site) {
+    return String(logValidationIndex.value + 1);
+  }
+  const name = site.name.trim();
+  return name || t('setup.logValidation.siteFallback', { value: logValidationIndex.value + 1 });
+});
+
+const logValidationResultLabel = computed(() => {
+  if (logValidationResult.value.status === 'success') {
+    return t('setup.logValidation.resultSuccess');
+  }
+  if (logValidationResult.value.status === 'error') {
+    return t('setup.logValidation.resultFailed');
+  }
+  return t('setup.logValidation.resultIdle');
+});
+
+function createWebsiteDraft(prefillLogPath = ''): WebsiteDraft {
   return {
     name: '',
-    logPath: '',
+    logPath: prefillLogPath,
     domainsInput: '',
     logType: '',
     logFormat: '',
     logRegex: '',
+    logValidationStatus: 'idle',
+    logValidationMessage: '',
     timeLayout: '',
     sourcesJson: '',
     whitelistEnabled: false,
@@ -586,6 +757,12 @@ function createWebsiteDraft(): WebsiteDraft {
     whitelistNonMainland: false,
   };
 }
+
+const ipAliases = ['ip', 'remote_addr', 'client_ip', 'http_x_forwarded_for'];
+const timeAliases = ['time', 'time_local', 'time_iso8601'];
+const statusAliases = ['status'];
+const urlAliases = ['url', 'request_uri', 'uri', 'path'];
+const requestAliases = ['request', 'request_line'];
 
 function normalizePort(value: string) {
   const trimmed = value.trim();
@@ -608,6 +785,325 @@ function removeWebsite(index: number) {
 
 function toggleWebsiteAdvanced(index: number) {
   advancedOpen.website[index] = !advancedOpen.website[index];
+}
+
+function createLogValidationResult(): LogValidationResult {
+  return {
+    status: 'idle',
+    message: '',
+    fields: [],
+    matchedLine: '',
+    source: '',
+  };
+}
+
+function canValidateLogRule(site: WebsiteDraft) {
+  return Boolean(site.logFormat.trim() || site.logRegex.trim());
+}
+
+function logValidationStatusLabel(status: LogValidationStatus) {
+  if (status === 'success') {
+    return t('setup.logValidation.statusSuccess');
+  }
+  if (status === 'error') {
+    return t('setup.logValidation.statusError');
+  }
+  return t('setup.logValidation.statusIdle');
+}
+
+function markLogValidationDirty(site: WebsiteDraft) {
+  if (site.logValidationStatus !== 'idle' || site.logValidationMessage) {
+    site.logValidationStatus = 'idle';
+    site.logValidationMessage = '';
+  }
+}
+
+function openLogValidation(index: number) {
+  logValidationIndex.value = index;
+  logValidationVisible.value = true;
+  logValidationSample.value = '';
+  logValidationResult.value = createLogValidationResult();
+}
+
+function runLogValidation() {
+  const site = activeLogValidationSite.value;
+  if (!site) {
+    return;
+  }
+
+  logValidationLoading.value = true;
+  try {
+    const sampleLines = logValidationSample.value
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (sampleLines.length === 0) {
+      throw new Error(t('setup.logValidation.errorNoSample'));
+    }
+
+    const { regex, groupNames, source } = buildValidationRegex(site);
+    const match = findMatchingLine(regex, sampleLines);
+    if (!match) {
+      throw new Error(t('setup.logValidation.errorNoMatch'));
+    }
+
+    const { line, result } = match;
+    const groups = result.groups || {};
+    const fields = groupNames.map((name) => {
+      const raw = groups[name];
+      const value = raw === undefined || String(raw).trim() === '' ? t('common.none') : String(raw);
+      return { name, value };
+    });
+
+    logValidationResult.value = {
+      status: 'success',
+      message: t('setup.logValidation.resultSuccess'),
+      fields,
+      matchedLine: line,
+      source,
+    };
+    site.logValidationStatus = 'success';
+    site.logValidationMessage = t('setup.logValidation.resultSuccess');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : t('common.requestFailed');
+    logValidationResult.value = {
+      status: 'error',
+      message,
+      fields: [],
+      matchedLine: '',
+      source: '',
+    };
+    const skipSummary =
+      message === t('setup.logValidation.errorNoSample') || message === t('setup.logValidation.errorNoRule');
+    if (!skipSummary) {
+      site.logValidationStatus = 'error';
+      site.logValidationMessage = message;
+    }
+  } finally {
+    logValidationLoading.value = false;
+  }
+}
+
+function buildValidationRegex(site: WebsiteDraft): {
+  regex: RegExp;
+  groupNames: string[];
+  source: 'logRegex' | 'logFormat';
+} {
+  const logRegex = site.logRegex.trim();
+  const logFormat = site.logFormat.trim();
+  if (!logRegex && !logFormat) {
+    throw new Error(t('setup.logValidation.errorNoRule'));
+  }
+
+  let pattern = '';
+  let source: 'logRegex' | 'logFormat' = 'logRegex';
+  if (logRegex) {
+    pattern = ensureAnchors(normalizeRegexPattern(logRegex));
+  } else {
+    pattern = buildRegexFromFormat(logFormat);
+    source = 'logFormat';
+  }
+
+  const groupNames = extractGroupNames(pattern);
+  const validationError = validateLogPattern(groupNames);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  try {
+    return {
+      regex: new RegExp(pattern),
+      groupNames,
+      source,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : t('common.requestFailed');
+    throw new Error(message);
+  }
+}
+
+function findMatchingLine(regex: RegExp, lines: string[]) {
+  for (const line of lines) {
+    const result = regex.exec(line);
+    if (result) {
+      return { line, result };
+    }
+  }
+  return null;
+}
+
+function normalizeRegexPattern(pattern: string) {
+  return pattern.replace(/\(\?P<([a-zA-Z_][\w]*)>/g, '(?<$1>');
+}
+
+function ensureAnchors(pattern: string) {
+  let trimmed = pattern.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+  if (!trimmed.startsWith('^')) {
+    trimmed = `^${trimmed}`;
+  }
+  if (!trimmed.endsWith('$')) {
+    trimmed = `${trimmed}$`;
+  }
+  return trimmed;
+}
+
+function extractGroupNames(pattern: string) {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const regex = /\(\?<([a-zA-Z_][\w]*)>/g;
+  let match = regex.exec(pattern);
+  while (match) {
+    const name = match[1];
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+    match = regex.exec(pattern);
+  }
+  return names;
+}
+
+function validateLogPattern(groupNames: string[]) {
+  if (groupNames.length === 0) {
+    return t('setup.logValidation.errorNoGroups');
+  }
+  if (!hasAnyField(groupNames, ipAliases)) {
+    return t('setup.logValidation.errorMissingIp');
+  }
+  if (!hasAnyField(groupNames, timeAliases)) {
+    return t('setup.logValidation.errorMissingTime');
+  }
+  if (!hasAnyField(groupNames, statusAliases)) {
+    return t('setup.logValidation.errorMissingStatus');
+  }
+  if (!hasAnyField(groupNames, urlAliases) && !hasAnyField(groupNames, requestAliases)) {
+    return t('setup.logValidation.errorMissingUrl');
+  }
+  return '';
+}
+
+function hasAnyField(groupNames: string[], aliases: string[]) {
+  return groupNames.some((name) => aliases.includes(name));
+}
+
+function buildRegexFromFormat(format: string) {
+  if (!format.trim()) {
+    throw new Error(t('setup.logValidation.errorEmptyFormat'));
+  }
+  const varPattern = /\$\w+/g;
+  const matches = Array.from(format.matchAll(varPattern));
+  if (matches.length === 0) {
+    throw new Error(t('setup.logValidation.errorNoVars'));
+  }
+
+  let builder = '';
+  let last = 0;
+  const used = new Set<string>();
+  matches.forEach((match) => {
+    const index = match.index ?? 0;
+    const literal = format.slice(last, index);
+    builder += escapeRegExp(literal);
+    const varName = match[0].slice(1);
+    const quoted = isQuotedTokenBoundary(literal, format.slice(index + match[0].length));
+    builder += tokenRegexForVar(varName, used, quoted);
+    last = index + match[0].length;
+  });
+  builder += escapeRegExp(format.slice(last));
+  return `^${builder}$`;
+}
+
+function tokenRegexForVar(name: string, used: Set<string>, quoted: boolean) {
+  const addGroup = (group: string, pattern: string) => {
+    if (used.has(group)) {
+      return pattern;
+    }
+    used.add(group);
+    return `(?<${group}>${pattern})`;
+  };
+
+  const commaListPattern = '[^,\\s]+(?:,\\s*[^,\\s]+)*';
+  let optionalTokenPattern = '\\S*';
+  let requiredTokenPattern = '\\S+';
+  if (quoted) {
+    optionalTokenPattern = '[^"]*';
+    requiredTokenPattern = '[^"]+';
+  }
+
+  switch (name) {
+    case 'remote_addr':
+      return addGroup('ip', requiredTokenPattern);
+    case 'http_x_forwarded_for':
+      return addGroup('http_x_forwarded_for', commaListPattern);
+    case 'remote_user':
+      return addGroup('user', optionalTokenPattern);
+    case 'time_local':
+      return addGroup('time', '[^]]+');
+    case 'time_iso8601':
+      return addGroup('time', requiredTokenPattern);
+    case 'request':
+      return addGroup('request', requiredTokenPattern);
+    case 'request_method':
+      return addGroup('method', requiredTokenPattern);
+    case 'request_uri':
+    case 'uri':
+      return addGroup('url', requiredTokenPattern);
+    case 'args':
+      return addGroup('args', optionalTokenPattern);
+    case 'query_string':
+      return addGroup('query_string', optionalTokenPattern);
+    case 'status':
+      return addGroup('status', '\\d{3}');
+    case 'body_bytes_sent':
+    case 'bytes_sent':
+      return addGroup('bytes', '\\d+');
+    case 'http_referer':
+      return addGroup('referer', optionalTokenPattern);
+    case 'http_user_agent':
+      return addGroup('ua', optionalTokenPattern);
+    case 'host':
+    case 'http_host':
+      return addGroup('host', requiredTokenPattern);
+    case 'server_name':
+      return addGroup('server_name', requiredTokenPattern);
+    case 'scheme':
+      return addGroup('scheme', requiredTokenPattern);
+    case 'request_length':
+      return addGroup('request_length', '\\d+');
+    case 'remote_port':
+      return addGroup('remote_port', '\\d+');
+    case 'connection':
+      return addGroup('connection', '\\d+');
+    case 'request_time_msec':
+      return addGroup('request_time_msec', '\\d+(?:\\.\\d+)?');
+    case 'upstream_addr':
+      return addGroup('upstream_addr', commaListPattern);
+    case 'upstream_status':
+      return addGroup('upstream_status', commaListPattern);
+    case 'upstream_response_time':
+      return addGroup('upstream_response_time', commaListPattern);
+    case 'upstream_connect_time':
+      return addGroup('upstream_connect_time', commaListPattern);
+    case 'upstream_header_time':
+      return addGroup('upstream_header_time', commaListPattern);
+    default:
+      return optionalTokenPattern;
+  }
+}
+
+function isQuotedTokenBoundary(prefix: string, suffix: string) {
+  const prefixTrim = prefix.replace(/[ \t\r\n]+$/, '');
+  if (!prefixTrim.endsWith('"')) {
+    return false;
+  }
+  const suffixTrim = suffix.replace(/^[ \t\r\n]+/, '');
+  return suffixTrim.startsWith('"');
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function fieldError(field: string) {
@@ -916,6 +1412,7 @@ async function loadConfig() {
   loadError.value = '';
   try {
     const response = await fetchConfig();
+    defaultLogPath.value = response.default_log_path || '';
     configReadonly.value = Boolean(response.readonly);
     hydrateDraft(response.config);
   } catch (err) {
@@ -953,6 +1450,8 @@ function hydrateDraft(config: ConfigPayload) {
     logType: site.logType || '',
     logFormat: site.logFormat || '',
     logRegex: site.logRegex || '',
+    logValidationStatus: 'idle' as LogValidationStatus,
+    logValidationMessage: '',
     timeLayout: site.timeLayout || '',
     sourcesJson: site.sources && site.sources.length > 0 ? JSON.stringify(site.sources, null, 2) : '',
     whitelistEnabled: Boolean(site.whitelist?.enabled),
@@ -960,7 +1459,7 @@ function hydrateDraft(config: ConfigPayload) {
     whitelistCitiesText: (site.whitelist?.cities || []).join(', '),
     whitelistNonMainland: Boolean(site.whitelist?.nonMainland),
   }));
-  websiteDrafts.value = mapped.length ? mapped : [createWebsiteDraft()];
+  websiteDrafts.value = mapped.length ? mapped : [createWebsiteDraft(defaultLogPath.value)];
 }
 
 onMounted(() => {

@@ -27,3 +27,16 @@
 ## 6. 本地开发数据是否持久化
 `dev_local.sh` 默认使用 docker volume `nginxpulse_pgdata`，不会自动删除。
 需要重置时请手动删除该 volume。
+
+## 7. 如何通过 URL 隐藏左侧菜单
+在 URL 查询参数中加入以下任意一个即可隐藏左侧菜单（适合嵌入模式）：
+- `hideSidebar=1|true|yes|on`
+- `embed=1|true|yes|on`
+- `sidebar=0|false|no|off|hide`
+
+示例：
+```text
+/settings?hideSidebar=1
+/realtime?embed=1
+/logs?sidebar=0
+```
